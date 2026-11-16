@@ -1,0 +1,7 @@
+[
+ {"match": "https://mpp.api.agentmail.to/v0/domains", "status": "intended", "note": "AgentMail confirmed Nov 10: $10 is the real price; the MPP directory entry is being corrected", "when_http": null, "added": "2026-11-10"},
+ {"match": "gateway.spraay.app", "status": "intended", "note": "Spraay confirmed Nov 13: the Base pay-to was rotated on purpose; the old address is retired", "when_http": null, "added": "2026-11-13"},
+ {"match": "mcp-x402.onrender.com", "status": "intended", "note": "Script Master Labs confirmed Nov 13: the higher live prices are intended; Bazaar listings are stale", "when_http": null, "added": "2026-11-13"},
+ {"match": "squeezeos-api.onrender.com", "status": "intended", "note": "Script Master Labs confirmed Nov 13: a free no-charge precheck when no cohort qualifies; nothing paid is delivered free", "when_http": null, "added": "2026-11-13"},
+ {"match": "https://api.cleave.fi/x402/gas", "status": "intended", "note": "Cleave confirmed Nov 14: the bare URL is an unpayable example offer; real offers need order details", "when_http": null, "added": "2026-11-14"}
+]
