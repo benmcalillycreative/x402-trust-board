@@ -2,6 +2,7 @@
 
 import html
 import json
+from pathlib import Path
 from collections import Counter, defaultdict
 
 from . import config, db
@@ -77,6 +78,21 @@ def host_summary(rows):
 
 
 ROTATING_LIMIT = 5  # more distinct pay-to addresses than this in the window = per-request addresses
+
+
+SOURCE_URL = "https://github.com/benmcalillycreative/x402-trust-board/tree/main"
+
+
+def engine_version():
+    """Package version plus the git commit the board was built from, when there is one."""
+    import subprocess
+    from . import __version__
+    try:
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).resolve().parent,
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:
+        sha = ""
+    return f"v{__version__}" + (f" ({sha})" if sha else "")
 
 
 def website(host):
@@ -404,6 +420,7 @@ problems on our side.</p>
 sign it with the wallet. Verified endpoints get a green mark, and if anything ever asks to be paid
 somewhere else, the board flags it. <a href="verify.html">Verify your payout address</a>.</p>
 {contact_html}
+<p class="engine">Built by engine {engine_version()}. <a href="{SOURCE_URL}">Read the code</a> that grades every endpoint.</p>
 </section>
 </main>
 <script>
