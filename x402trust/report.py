@@ -477,5 +477,47 @@ def run(conn=None, log=print):
             {"generated_at": db.now(), "window_days": config.CHAIN_WINDOW_DAYS, "chain": "eip155:8453",
              "asset": "USDC", "total_usd": round(onchain["total_usd"], 2), "hosts": onchain["hosts"]},
             separators=(",", ":")))
+    try:
+        (config.REPORT_DIR / "payouts.json").write_text(json.dumps(payouts_export(conn), separators=(",", ":")))
+    except Exception as exc:
+        log(f"  (payouts.json skipped: {exc})")
     log(f"Report written: {html_path}")
     return html_path
+
+
+def payouts_export(conn):
+    """Every payout proof the board has found, with when it was last checked and when an
+    endpoint on that host last asked to be paid to each proven address. Meant for buyers'
+    clients: check freshness yourself, or better, verify the proof at call time (see how_to_verify)."""
+    from . import payout
+    conn.executescript(payout.SCHEMA)
+    checked = {h: t for h, t in conn.execute("SELECT host, checked_at FROM payout_checks")}
+    last_asked = {}
+    for host, addr, ts in conn.execute(
+            "SELECT e.host, lower(p.quoted_pay_to), MAX(p.ts) FROM probes p JOIN endpoints e USING (resource) "
+            "WHERE p.quoted_pay_to IS NOT NULL GROUP BY e.host, lower(p.quoted_pay_to)"):
+        last_asked[(host, addr)] = ts
+    hosts = {}
+    for host, source, domain, address, issued, signer in conn.execute(
+            "SELECT host, source, domain, address, issued, signer FROM payout_proofs ORDER BY host"):
+        h = hosts.setdefault(host, {"host": host, "proofs_checked_at": checked.get(host), "proofs": []})
+        h["proofs"].append({
+            "source": source, "domain": domain, "address": address, "issued": issued,
+            "signature": signer,  # wallet | contract | unsigned | invalid | unverifiable
+            "last_seen_asking": last_asked.get((host, address.lower())),
+        })
+    return {
+        "generated_at": db.now(),
+        "how_to_verify": {
+            "dns": f"TXT record at {payout.DNS_LABEL}<domain>",
+            "site": f"https://<domain>{payout.WELL_KNOWN}",
+            "message": payout.MESSAGE,
+            "note": "Each proof is an EIP-191 personal_sign (or ERC-1271 for smart wallets) of the message above. "
+                    "A client can check the payTo in a live 402 against the seller's own DNS record at call "
+                    "time, without trusting this board. The DNS method doesn't depend on the API server, so a "
+                    "compromised server alone can't forge it.",
+            "checks": "The board re-reads proofs about once a day (DNS over HTTPS, so a changed record can lag by "
+                      "its TTL) and checks each endpoint's 402 about twice a day.",
+        },
+        "hosts": list(hosts.values()),
+    }

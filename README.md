@@ -139,6 +139,16 @@ Signatures are checked with the standard library (`x402trust/ethsig.py`); smart-
 ERC-1271 call to Base (`X402T_BASE_RPC_URL`, default `https://mainnet.base.org`). DNS is looked up over HTTPS
 (`X402T_DOH_URL`, default Cloudflare).
 
+## Payout proofs for buyers' clients (payouts.json)
+
+Next to `scores.json`, the board publishes `payouts.json`: every payout proof it has found, when
+it last re-read the proofs (`proofs_checked_at`) and when an endpoint on that host last asked to be
+paid to each proven address (`last_seen_asking`). A client can use those timestamps to enforce its
+own staleness limit. Better still, it can verify at call time without trusting the board: read
+the seller's `_x402-payto.<domain>` TXT record (or `/.well-known/x402-payto.json`), check the
+signature, and compare the address with the `payTo` in the live 402. The DNS method doesn't depend
+on the API server, so a compromised server alone can't forge it.
+
 ## Real payments on Base
 
 The catalog's call and payer counts come from the seller side, and some of them are padded by sellers paying
