@@ -111,3 +111,11 @@ CHAIN_RPC_URLS = [u.strip() for u in (
 CHAIN_MAX_WAIT = int(os.environ.get("X402T_CHAIN_MAX_WAIT", "300"))  # seconds to sit out rate limits before stopping
 CHAIN_MIN_INTERVAL = float(os.environ.get("X402T_CHAIN_MIN_INTERVAL", "0.3"))  # seconds between requests
 BASE_BLOCK_SECONDS = 2
+# Solana USDC payments (chain_sol.py). Public RPCs are slow and strict, so each run is capped.
+SOL_ENABLED = os.environ.get("X402T_SOLANA", "1") == "1"
+SOL_RPC_URLS = [u.strip() for u in os.environ.get(
+    "X402T_SOLANA_RPC_URLS", "https://api.mainnet-beta.solana.com,https://solana-rpc.publicnode.com").split(",")
+    if u.strip()]
+SOL_MIN_INTERVAL = float(os.environ.get("X402T_SOLANA_MIN_INTERVAL", "0.25"))
+SOL_MAX_SECONDS = int(os.environ.get("X402T_SOLANA_MAX_SECONDS", "600"))
+SOL_MAX_TX = int(os.environ.get("X402T_SOLANA_MAX_TX", "20000"))  # per token account per 30 days

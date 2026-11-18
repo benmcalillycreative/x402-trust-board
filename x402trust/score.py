@@ -145,6 +145,11 @@ class Context:
             self.onchain = chain.summaries(conn)  # {address: real USDC payments received on Base}
         except Exception:
             self.onchain = {}
+        try:
+            from . import chain_sol
+            self.onchain_sol = chain_sol.summaries(conn)  # {address (case kept): ... on Solana}
+        except Exception:
+            self.onchain_sol = {}
 
     def find_rotating_hosts(self, probes_by_host):
         """Hosts that hand out fresh, never-listed payment addresses.
@@ -284,10 +289,15 @@ def history_flags(ep, quotes, fresh_each_time, ctx):
 
 def onchain_flags(healthy, ctx):
     """What the blockchain says about the wallet this endpoint asks to be paid to."""
-    base = [p for p in healthy if p["quoted_pay_to"] and p["quoted_network"] == chain.CHAIN]
-    if not base:
+    from .chain_sol import CHAIN as SOLANA
+    paid = [p for p in healthy if p["quoted_pay_to"] and p["quoted_network"] in (chain.CHAIN, SOLANA)]
+    if not paid:
         return set()
-    s = getattr(ctx, "onchain", {}).get(norm_addr(base[-1]["quoted_pay_to"]))
+    last = paid[-1]
+    if last["quoted_network"] == SOLANA:
+        s = getattr(ctx, "onchain_sol", {}).get(last["quoted_pay_to"].strip())
+    else:
+        s = getattr(ctx, "onchain", {}).get(norm_addr(last["quoted_pay_to"]))
     if not s or s["payments"] < 20:
         return set()
     if s["own_share"] >= 0.5:

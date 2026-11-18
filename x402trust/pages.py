@@ -165,7 +165,7 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
                         for n in host_notes)
         body.append(f'<div class="card"><h2>Confirmed by the seller</h2><ul>{items}</ul></div>')
     if onchain:
-        body.append(f'<div class="card"><h2>Real payments on Base (30 days)</h2><p>{onchain["payments"]:,} payments from '
+        body.append(f'<div class="card"><h2>Real payments on Base and Solana (30 days)</h2><p>{onchain["payments"]:,} payments from '
                     f'{onchain["payers"]:,} wallets, ${onchain["usd"]:,.2f} in USDC'
                     + (f', {round(100 * onchain["own_share"])}% from the seller\'s own wallets' if onchain["own_share"] else "")
                     + '.</p><p class="muted">All USDC received by the addresses these endpoints ask to be paid to.</p></div>')

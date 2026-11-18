@@ -124,19 +124,32 @@ def site_link(host):
             f'title="The seller\'s website">{esc(site)} \u2197</a>')
 
 
+def all_summaries(conn):
+    """Fully counted payout addresses on Base (lowercase 0x) and Solana (base58, case kept)."""
+    from . import chain, chain_sol
+    sums = dict(chain.summaries(conn))
+    if config.SOL_ENABLED:
+        try:
+            sums.update(chain_sol.summaries(conn))
+        except Exception:
+            pass
+    return sums
+
+
 def onchain_by_host(conn):
-    """Real USDC received on Base per service, next to Coinbase's own call counts."""
+    """Real USDC received on Base and Solana per service, next to Coinbase's own call counts."""
     from datetime import datetime, timedelta, timezone
-    from . import chain
-    sums = chain.summaries(conn)
+    from . import chain, chain_sol
+    sums = all_summaries(conn)
     if not sums:
         return []
     since = (datetime.now(timezone.utc) - timedelta(days=config.SCORE_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
     addrs = defaultdict(set)
-    for host, a in conn.execute(
-            "SELECT e.host, lower(p.quoted_pay_to) FROM probes p JOIN endpoints e USING (resource) "
-            "WHERE p.ts >= ? AND p.quoted_network = ? AND p.quoted_pay_to IS NOT NULL", (since, chain.CHAIN)):
-        addrs[host].add(a)
+    for host, a, net in conn.execute(
+            "SELECT e.host, p.quoted_pay_to, p.quoted_network FROM probes p JOIN endpoints e USING (resource) "
+            "WHERE p.ts >= ? AND p.quoted_network IN (?, ?) AND p.quoted_pay_to IS NOT NULL",
+            (since, chain.CHAIN, chain_sol.CHAIN)):
+        addrs[host].add(a.lower() if net == chain.CHAIN else a.strip())
     calls = {h: c or 0 for h, c in conn.execute(
         "SELECT host, SUM(l30_calls) FROM endpoints WHERE delisted = 0 GROUP BY host")}
     out = []
@@ -166,7 +179,7 @@ def onchain_section(hosts, total_usd, own_usd_share):
         return (f'<tr><td>{esc(h["host"])}</td><td class="num">{h["payments"]:,}</td>'
                 f'<td class="num">{h["payers"]:,}</td><td class="num">${h["usd"]:,.2f}</td>'
                 f'<td class="num">{own}</td><td class="num">{h["catalog_calls"]:,}</td></tr>')
-    return f"""<h2 id="onchain">Real payments on Base</h2>
+    return f"""<h2 id="onchain">Real payments on Base and Solana</h2>
 <p class="lede">USDC that actually reached each service's payment address in the last {config.CHAIN_WINDOW_DAYS} days,
 read from the blockchain, next to the call count Coinbase's catalog reports. "From own wallets" is money sent from
 addresses the same service asks to be paid to: the seller paying itself. ${total_usd:,.0f} in total
@@ -483,9 +496,8 @@ def run(conn=None, log=print):
     html_path = config.REPORT_DIR / "leaderboard.html"
     json_path = config.REPORT_DIR / "scores.json"
     try:
-        from . import chain
         hosts = onchain_by_host(conn)
-        sums = chain.summaries(conn)
+        sums = all_summaries(conn)
         total = sum(v["usd"] for v in sums.values())
         own_usd = sum(v["usd"] * v["own_share"] for v in sums.values())  # approximation by payment share
         onchain = {"hosts": hosts, "total_usd": total, "own_share": own_usd / total if total else 0}
@@ -497,6 +509,7 @@ def run(conn=None, log=print):
     if onchain:
         (config.REPORT_DIR / "onchain.json").write_text(json.dumps(
             {"generated_at": db.now(), "window_days": config.CHAIN_WINDOW_DAYS, "chain": "eip155:8453",
+             "chains": ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"],
              "asset": "USDC", "total_usd": round(onchain["total_usd"], 2), "hosts": onchain["hosts"]},
             separators=(",", ":")))
     try:
@@ -519,17 +532,21 @@ def payouts_export(conn):
     from . import payout
     conn.executescript(payout.SCHEMA)
     checked = {h: t for h, t in conn.execute("SELECT host, checked_at FROM payout_checks")}
-    last_asked = {}
-    for host, addr, ts in conn.execute(
-            "SELECT e.host, lower(p.quoted_pay_to), MAX(p.ts) FROM probes p JOIN endpoints e USING (resource) "
+    last_asked, original = {}, {}
+    for host, addr, ts, raw in conn.execute(
+            "SELECT e.host, lower(p.quoted_pay_to), MAX(p.ts), p.quoted_pay_to FROM probes p JOIN endpoints e USING (resource) "
             "WHERE p.quoted_pay_to IS NOT NULL GROUP BY e.host, lower(p.quoted_pay_to)"):
         last_asked[(host, addr)] = ts
+        original[addr] = raw
+    # Proofs are stored lowercased for comparison. That's harmless for 0x addresses but breaks
+    # base58 (Solana) ones, so give those back in the case the seller's own 402 uses.
+    fix_case = lambda a: a if a.startswith("0x") else original.get(a.lower(), a)
     hosts = {}
     for host, source, domain, address, issued, signer in conn.execute(
             "SELECT host, source, domain, address, issued, signer FROM payout_proofs ORDER BY host"):
         h = hosts.setdefault(host, {"host": host, "proofs_checked_at": checked.get(host), "proofs": []})
         h["proofs"].append({
-            "source": source, "domain": domain, "address": address, "issued": issued,
+            "source": source, "domain": domain, "address": fix_case(address), "issued": issued,
             "signature": signer,  # wallet | contract | unsigned | invalid | unverifiable
             "last_seen_asking": last_asked.get((host, address.lower())),
         })

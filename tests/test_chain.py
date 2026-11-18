@@ -170,7 +170,7 @@ class OnChain(unittest.TestCase):
         score.run(self.conn, log=lambda *_: None)
         md = monthly.run(self.conn, label="2026-10", log=lambda *_: None).read_text()
         self.assertIn("# State of agent payments: October 2026", md)
-        self.assertIn("Real money on Base", md)
+        self.assertIn("Real money on chain", md)
         self.assertIn("| host-a.example |", md)
         data = json.loads((config.REPORT_DIR / "state" / "2026-10.json").read_text())
         self.assertGreater(data["onchain"]["payments"], 0)

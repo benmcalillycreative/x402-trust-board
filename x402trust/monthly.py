@@ -64,9 +64,8 @@ def collect(conn, now=None):
         pass
 
     try:
-        from . import chain
         chain_hosts = report.onchain_by_host(conn)
-        sums = chain.summaries(conn)
+        sums = report.all_summaries(conn)
     except Exception:
         chain_hosts, sums = [], {}
     # Several hosts can share one wallet (a custom domain and its platform URL, say). Count each
@@ -160,7 +159,7 @@ def markdown(s, label, prev=None):
         f"# State of agent payments: {label}",
         "",
         f"*x402 Trust Board, data for the 30 days to {s['window']['to'][:10]}. Every listed endpoint is "
-        f"checked several times a day without paying; payments are counted on Base.*",
+        f"checked several times a day without paying; payments are counted on Base and Solana.*",
         "",
         "## The market in numbers",
         "",
@@ -188,7 +187,7 @@ def markdown(s, label, prev=None):
         "",
     ]
     lines += [f"- {t['text']}: {t['endpoints']:,} endpoint{'s' if t['endpoints'] != 1 else ''}" for t in f["top"][:8]]
-    lines += ["", "## Real money on Base", ""]
+    lines += ["", "## Real money on chain", ""]
     if o["hosts_counted"]:
         lines += [
             f"For the {o.get('services_counted', o['hosts_counted']):,} services whose payout wallets the board has fully counted: "
@@ -209,7 +208,7 @@ def markdown(s, label, prev=None):
         f"Listings come from Coinbase's x402 Bazaar, Circle's Agent Marketplace and the MPP directory. Each "
         "endpoint is asked for its price without paying, and the answer is compared with its listing. Grades "
         "weigh uptime, speed, whether the terms match, and paying customers. On-chain figures are USDC "
-        "transfers on Base to the addresses endpoints ask to be paid, for services whose every address has been "
+        "transfers on Base and Solana to the addresses endpoints ask to be paid, for services whose every address has been "
         f"scanned. Full method and data: {BOARD}",
         "",
     ]

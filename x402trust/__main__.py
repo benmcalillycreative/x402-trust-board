@@ -29,7 +29,7 @@ Alerts
 import argparse
 import sys
 
-from . import (alerts, chain, config, crawl, crawl_circle, crawl_mpp, db, monthly, notes, payout, probe,
+from . import (alerts, chain, chain_sol, config, crawl, crawl_circle, crawl_mpp, db, monthly, notes, payout, probe,
                report, score, signups)
 
 CYCLE = ["crawl", "probe", "payout", "chain", "score", "report", "signups", "alerts", "monthly", "run", "status"]
@@ -151,6 +151,11 @@ def main(argv=None):
             chain.run(conn)
         except Exception as exc:  # a slow or failing RPC shouldn't stop the board
             print(f"On-chain payment check failed: {exc}", file=sys.stderr)
+        if config.SOL_ENABLED:
+            try:
+                chain_sol.run(conn)
+            except Exception as exc:
+                print(f"Solana payment check failed: {exc}", file=sys.stderr)
     if args.command in ("score", "run"):
         score.run(conn)
     if args.command in ("report", "run"):

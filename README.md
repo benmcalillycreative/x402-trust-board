@@ -197,7 +197,11 @@ are left off the board until they're caught up, so partial counts are never show
 new blocks and takes seconds. A free Alchemy or QuickNode Base URL in `X402T_BASE_RPC_URL` makes the backfill much
 faster. Set `X402T_CHAIN=0` to turn it off.
 
-Only Base USDC is counted for now. Solana, Tempo (MPP) and other tokens show no on-chain numbers.
+Solana USDC is counted too (`chain_sol.py`): for each Solana pay-to address, its USDC token accounts'
+transactions are read back 30 days through public Solana RPCs (`X402T_SOLANA_RPC_URLS`), at most
+`X402T_SOLANA_MAX_SECONDS` per run. Accounts with more than `X402T_SOLANA_MAX_TX` transactions in the window
+are left out rather than shown partly counted. `X402T_SOLANA=0` turns it off. Tempo (MPP) and other tokens
+show no on-chain numbers yet.
 
 ## Check-before-you-pay API (worker/)
 
