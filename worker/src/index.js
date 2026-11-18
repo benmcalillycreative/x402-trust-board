@@ -16,6 +16,7 @@ import { parseTarget, verdict } from "./check.js";
 import { signups } from "./signups.js";
 import { mcp } from "./mcp.js";
 import { openapi, wellKnown } from "./openapi.js";
+import { ICON_PNG_BASE64 } from "./icon.js";
 import { analyze, findPayTo, parseListingInput, LISTING_FREE_PER_DAY } from "./listing.js";
 
 const BASE = "eip155:8453";
@@ -42,6 +43,7 @@ function routes(env) {
         "ok, caution, avoid or unknown with reasons.",
       mimeType: "application/json",
       serviceName: "x402 Trust Board",
+      iconUrl: "https://check.benmcalilly.com/icon.png",
       tags: ["trust", "security", "x402", "due-diligence", "payments"],
       extensions: declareDiscoveryExtension({
         input: { url: "https://api.example.com/v1/quote", payTo: "0x0000000000000000000000000000000000000001" },
@@ -190,6 +192,9 @@ app.get("/", (c) =>
     listing: "For sellers, free: GET /v1/listing?url=<your endpoint>[&method=POST] explains why it is or isn't in the Bazaar",
   })
 );
+
+const ICON = Uint8Array.from(atob(ICON_PNG_BASE64), (ch) => ch.charCodeAt(0));
+app.get("/icon.png", (c) => c.body(ICON, 200, { "content-type": "image/png", "cache-control": "public, max-age=86400" }));
 
 app.get("/v1/health", (c) => c.json({ ok: true, payTo: c.env.PAY_TO || null }));
 

@@ -149,11 +149,11 @@ export function analyze({ target, validate, merchant, seller, validateError, mer
   // 3. Agentic.Market card: what the per-route metadata can and can't fill in.
   if (entry) {
     const missing = [];
-    if (!entry.description) missing.push("a description");
-    if (!entry.iconUrl) missing.push("an icon (resource.iconUrl)");
-    if (!entry.serviceName) missing.push("a serviceName");
+    if (!entry.description) missing.push("description");
+    if (!entry.iconUrl) missing.push("icon (resource.iconUrl)");
+    if (!entry.serviceName) missing.push("serviceName");
     if (missing.length) {
-      add("warn", "Listing metadata is incomplete", `The Bazaar entry has no ${missing.join(", ")}.`,
+      add("warn", "Listing metadata is incomplete", `The Bazaar entry is missing: ${missing.join(", ")}.`,
         "Set them on the route: description (500 characters or fewer, saying when an agent should use it), serviceName, " +
           "and resource.iconUrl (PNG, JPG, WebP or GIF; not SVG). They are picked up on the next settled payment.");
     }

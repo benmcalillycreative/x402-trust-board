@@ -69,7 +69,7 @@ test("long description, missing icon, below the bar", () => {
     seller: { endpoints: [{ resource: "https://api.example.com/x", uptime_30d: 0.97, probes_30d: 40, history_days: 12 }] },
   });
   assert.ok(out.findings.some((x) => x.title === "Description is too long" && x.status === "fail"));
-  assert.ok(out.findings.some((x) => x.title === "Listing metadata is incomplete" && /iconUrl/.test(x.detail)));
+  assert.ok(out.findings.some((x) => x.title === "Listing metadata is incomplete" && /missing: icon \(resource.iconUrl\)/.test(x.detail)));
   const av = out.findings.find((x) => x.title.startsWith("Availability"));
   assert.equal(av.status, "warn");
   assert.match(av.title, /12 days so far/);
