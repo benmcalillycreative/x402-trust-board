@@ -200,7 +200,8 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
                 f'<p class="muted">It updates with every board refresh. Paste this where you want it:</p>'
                 f'<textarea rows="3" readonly onclick="this.select()">{esc(snippet)}</textarea></div>')
     body.append(f'<p class="muted">Updated {esc(db.now())}. Data: <a href="../scores.json">scores.json</a> · '
-                f'<a href="../payouts.json">payouts.json</a>. Questions or corrections: reply to any board email.</p>')
+                f'<a href="../payouts.json">payouts.json</a> · <a href="../method.html">Method and limits</a>. '
+                f'Questions or corrections: reply to any board email.</p>')
     desc = f"{name} ({host}) on the x402 Trust Board: grade {grade or 'not graded'}, {len(rows)} endpoints" + \
            (", payout address verified" if verified else "")
     return page(f"{name}: x402 Trust Board", "".join(body), desc), badge_svg(grade, verified), grade, verified, name
@@ -250,6 +251,58 @@ def seller_json(host, rows, proofs, name, onchain=None):
         "page": f"{BOARD}seller/{slug(host)}.html",
         "endpoints": eps,
     }
+
+
+def method_page():
+    """What the verdicts mean, what each flag is based on, and what none of it can promise."""
+    order = {"red": 0, "warn": 1, "info": 2, "good": 3}
+    label = {"red": "Red flag", "warn": "Warning", "info": "Information", "good": "Good"}
+    rows = sorted(FLAG_TEXT.items(), key=lambda kv: (order.get(severity(kv[0]), 9), kv[0]))
+    flags = "".join(f'<tr><td><code>{esc(code)}</code></td><td>{esc(text)}</td><td>{label.get(severity(code), "")}</td></tr>'
+                    for code, text in rows)
+    body = f"""<p class="muted"><a href="index.html">x402 Trust Board</a> / Method and limits</p>
+<h1>Method and limits</h1>
+<p class="sub">What the board checks, what its answers mean, and what they can't promise.</p>
+<div class="card"><h2>What is checked</h2>
+<p>Every endpoint listed in Coinbase's x402 Bazaar, Circle's Agent Marketplace and the MPP directory is asked for its
+price several times a day <b>without paying</b>. The answer (network, amount, the address to pay) is compared with the
+listing and with earlier answers. USDC payments to each service's payout addresses are counted on Base and Solana.
+Sellers can publish a signed <a href="verify.html">payout proof</a>.</p></div>
+<div class="card"><h2>Verdicts (check API, MCP tool and x402-trust-guard)</h2><ul>
+<li><b>avoid</b>: money would go somewhere it shouldn't. The endpoint switched to a wallet nothing it listed names, asks
+to be paid at a burn address or a non-public address, or asks for an address that contradicts the payout proof the
+seller published. Each is a direct observation of the endpoint's own 402 answer.</li>
+<li><b>caution</b>: it works, but something needs a look: a price well above its listing (often a stale listing), a
+wallet its listing doesn't name, flaky or slow answers, a C/D/F grade, too few checks to grade, or data more than a day old.</li>
+<li><b>ok</b>: graded A or B on recent data, with payment terms that match its listing and nothing contradicting its
+payout address.</li>
+<li><b>unknown</b>: the seller isn't in any catalog the board reads.</li></ul>
+<p>Grades (A–F) rank reliability and listing accuracy; they are not a safety verdict on their own.</p></div>
+<div class="card"><h2>What it can't tell you</h2><ul>
+<li><b>Whether you'll get what you pay for.</b> Checks never pay, so delivery after payment isn't tested.</li>
+<li><b>Whether a seller is honest or solvent.</b> A payout proof shows that whoever controls the domain also controls the
+wallet. Nothing more.</li>
+<li><b>What happened since the last check.</b> Data refreshes about every six hours; answers say how old they are, and
+anything over a day old is never "ok".</li>
+<li><b>Payments elsewhere.</b> Only USDC on Base and Solana is counted. Services that hand out a new address for every
+payment, or whose addresses aren't all counted yet, show no payment numbers rather than partial ones.</li></ul></div>
+<div class="card"><h2>If the check can't be reached</h2>
+<p>x402-trust-guard lets the payer choose: <code>onError: "allow"</code> (default, the payment goes ahead) or
+<code>"block"</code>. Unknown sellers and caution verdicts are allowed by default and can be blocked the same way.</p></div>
+<div class="card"><h2>How the numbers are counted</h2><ul>
+<li>Headline counts cover endpoints listed now. Delisted ones stay in <a href="scores.json">scores.json</a>.</li>
+<li>A service is a distinct host. Hosts paid at exactly the same addresses are shown as one service in payment tables,
+and every payment total counts each address once.</li>
+<li>Paid-call counts come from Coinbase's catalog; payment counts come from the chain. They differ, and both are shown.</li></ul></div>
+<div class="card"><h2>Independence and corrections</h2>
+<p>Grades and findings are never for sale: the seller plan changes how often and how closely a service is watched,
+never how it is graded. A seller who thinks a finding is wrong can reply to any board email; confirmed intended terms
+(an example offer, a price that depends on the request) are recorded as owner notes and shown as such. The code is
+<a href="https://github.com/benmcalillycreative/x402-trust-board">public</a>.</p></div>
+<div class="card wrap"><h2>Every flag</h2><table><thead><tr><th>Code</th><th>Meaning</th><th>Level</th></tr></thead>
+<tbody>{flags}</tbody></table></div>"""
+    return page("Method and limits: x402 Trust Board", body,
+                "How the x402 Trust Board checks agent-payable APIs, what its verdicts mean, and what they can't promise.")
 
 
 def pro_page():
@@ -325,6 +378,7 @@ def build(conn, rows, outdir, onchain_hosts=None, log=print):
             f'<div class="card wrap"><table><thead><tr><th>Seller</th><th>Grade</th><th>Endpoints</th>'
             f'<th>Payout verified</th></tr></thead><tbody>{lis}</tbody></table></div>')
     (outdir / "pro.html").write_text(pro_page())
+    (outdir / "method.html").write_text(method_page())
     (outdir / "sellers.html").write_text(page("Sellers: x402 Trust Board", body,
                                               "Every seller on the x402 Trust Board, with grades and payout verification."))
     log(f"  Seller pages: {len(index):,}")

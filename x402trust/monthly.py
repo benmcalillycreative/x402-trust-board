@@ -57,7 +57,10 @@ def collect(conn, now=None):
     levels = Counter()
     try:
         from . import payout
+        live_hosts = {r["host"] for r in listed}
         for _host, m in payout.load(conn).items():
+            if _host not in live_hosts:
+                continue
             best = max(m.values(), key=lambda lv: payout.LEVELS.get(lv, -1))
             levels[best] += 1
     except Exception:
@@ -70,18 +73,9 @@ def collect(conn, now=None):
         chain_hosts, sums = [], {}
     # Several hosts can share one wallet (a custom domain and its platform URL, say). Count each
     # address once for the totals, and show hosts with the same wallets as one row.
-    addrs = {a for h in chain_hosts for a in h.get("addresses", [])}
-    usd = sum(sums[a]["usd"] for a in addrs if a in sums)
-    payments = sum(sums[a]["payments"] for a in addrs if a in sums)
-    self_paid = sum(sums[a]["payments"] * sums[a]["own_share"] for a in addrs if a in sums)
-    groups = {}
-    for h in chain_hosts:
-        key = tuple(h.get("addresses") or [h["host"]])
-        g = groups.setdefault(key, {"hosts": [], "usd": h["usd"], "payments": h["payments"],
-                                    "payers": h["payers"], "catalog_calls": 0})
-        g["hosts"].append(h["host"])
-        g["catalog_calls"] += h["catalog_calls"]
-    services = sorted(groups.values(), key=lambda g: -g["usd"])
+    t = report.counted_totals(chain_hosts, sums)
+    usd, payments, self_paid = t["usd"], t["payments"], t["own_share"] * t["payments"]
+    services = report.group_by_wallets(chain_hosts)
     cat_calls_counted = sum(g["catalog_calls"] for g in services)
 
     return {
@@ -118,7 +112,8 @@ def collect(conn, now=None):
             "top": [{"flag": f, "text": FLAG_TEXT.get(f, f), "endpoints": n}
                     for f, n in flags.most_common() if severity(f) in ("red", "warn")][:12],
         },
-        "payout_proofs": {"hosts": sum(levels.values()), "by_level": dict(levels)},
+        "payout_proofs": {"hosts": sum(levels.values()), "by_level": dict(levels),
+                          "signed": levels.get("dns_signed", 0) + levels.get("site_signed", 0)},
         "onchain": {
             "hosts_counted": len(chain_hosts),
             "services_counted": len(services),
@@ -126,8 +121,8 @@ def collect(conn, now=None):
             "payments": payments,
             "self_paid_pct": _pct(self_paid, payments),
             "catalog_calls_for_same_hosts": cat_calls_counted,
-            "top": [{"host": " + ".join(sorted(g["hosts"])[:3]) + (" + more" if len(g["hosts"]) > 3 else ""),
-                     "usd": g["usd"], "payments": g["payments"], "payers": g["payers"]} for g in services[:10]],
+            "top": [{"host": g["host"], "usd": g["usd"], "payments": g["payments"], "payers": g["payers"]}
+                    for g in services[:10]],
         },
     }
 
@@ -179,9 +174,10 @@ def markdown(s, label, prev=None):
         f"- **{f['red_endpoints']:,} endpoints at {f['red_hosts']:,} services carry a red flag**"
         f"{_delta(s, prev, ['flags', 'red_endpoints'])}: a switched wallet, a burn address, a 10× overcharge, "
         "or an address that contradicts the seller's own payout proof.",
-        f"- **{p['hosts']:,} services have published a payout proof**{_delta(s, prev, ['payout_proofs', 'hosts'])}"
-        + (f" ({p['by_level'].get('dns_signed', 0)} DNS + signature, {p['by_level'].get('site_signed', 0)} file + signature)"
-           if p["by_level"] else "") + ".",
+        f"- **Only {p.get('signed', 0):,} of {c['hosts']:,} services prove their payout address** with a signed "
+        f"DNS record or file{_delta(s, prev, ['payout_proofs', 'signed'])}. Another "
+        f"{p['hosts'] - p.get('signed', 0):,} name an address in an unsigned file or manifest, which helps but "
+        "proves nothing if their server is compromised.",
         "",
         "Most common problems:",
         "",
@@ -205,6 +201,7 @@ def markdown(s, label, prev=None):
         "",
         "## How this is measured",
         "",
+        "Counts cover endpoints listed now (delisted ones are left out), and a service is a distinct host. "
         f"Listings come from Coinbase's x402 Bazaar, Circle's Agent Marketplace and the MPP directory. Each "
         "endpoint is asked for its price without paying, and the answer is compared with its listing. Grades "
         "weigh uptime, speed, whether the terms match, and paying customers. On-chain figures are USDC "

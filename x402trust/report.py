@@ -171,9 +171,40 @@ def onchain_by_host(conn):
     return sorted(out, key=lambda r: -r["usd"])
 
 
+def group_by_wallets(hosts):
+    """Hosts paid at exactly the same addresses (a custom domain and its platform URL, say) are one
+    service as far as money goes: one row, its catalog calls added up."""
+    groups = {}
+    for h in hosts:
+        key = tuple(h.get("addresses") or [h["host"]])
+        g = groups.get(key)
+        if g is None:
+            groups[key] = dict(h, hosts=[h["host"]])
+        else:
+            g["hosts"].append(h["host"])
+            g["catalog_calls"] += h["catalog_calls"]
+    out = []
+    for g in groups.values():
+        names = sorted(g["hosts"])
+        g["host"] = " + ".join(names[:3]) + (f" + {len(names) - 3} more" if len(names) > 3 else "")
+        out.append(g)
+    return sorted(out, key=lambda g: -g["usd"])
+
+
+def counted_totals(hosts, sums):
+    """USDC, payments and self-paid share over the addresses of fully counted services, each once."""
+    addrs = {a for h in hosts for a in h.get("addresses", []) if a in sums}
+    usd = sum(sums[a]["usd"] for a in addrs)
+    payments = sum(sums[a]["payments"] for a in addrs)
+    own = sum(sums[a]["payments"] * sums[a]["own_share"] for a in addrs)
+    return {"usd": round(usd, 2), "payments": payments, "own_share": own / payments if payments else 0.0,
+            "addresses": len(addrs)}
+
+
 def onchain_section(hosts, total_usd, own_usd_share):
     if not hosts:
         return ""
+    services = group_by_wallets(hosts)
     def row(h):
         own = f"{round(100 * h['own_share'])}%" if h["payments"] else "—"
         return (f'<tr><td>{esc(h["host"])}</td><td class="num">{h["payments"]:,}</td>'
@@ -183,13 +214,17 @@ def onchain_section(hosts, total_usd, own_usd_share):
 <p class="lede">USDC that actually reached each service's payment address in the last {config.CHAIN_WINDOW_DAYS} days,
 read from the blockchain, next to the call count Coinbase's catalog reports. "From own wallets" is money sent from
 addresses the same service asks to be paid to: the seller paying itself. ${total_usd:,.0f} in total
-across all tracked addresses, {round(100 * own_usd_share)}% of it from sellers' own wallets.</p>
+to the {len(services):,} services whose every payout address has been fully counted (each address once; hosts that
+share a wallet are one row), {round(100 * own_usd_share)}% of it from sellers' own wallets.</p>
 <div class="wrap"><table><thead><tr><th>Host</th><th class="num">Payments</th><th class="num">Paying wallets</th>
 <th class="num">USDC received</th><th class="num">From own wallets</th><th class="num">Catalog calls (30d)</th></tr></thead>
-<tbody>{"".join(row(h) for h in hosts[:15])}</tbody></table></div>"""
+<tbody>{"".join(row(h) for h in services[:15])}</tbody></table></div>"""
 
 
 def build_html(rows, crawl, onchain=None):
+    # Every number and table on the page is about what's listed now; delisted endpoints stay in
+    # scores.json with their history.
+    rows = [r for r in rows if not r.get("delisted") and "delisted" not in r["flags"]]
     total = len(rows)
     hosts = host_summary(rows)
     n_hosts = len(hosts)
@@ -453,7 +488,8 @@ problems on our side.</p>
 sign it with the wallet. Verified endpoints get a green mark, and if anything ever asks to be paid
 somewhere else, the board flags it. <a href="verify.html">Verify your payout address</a>.</p>
 <p>Every seller has its own page with all of its endpoints, its payout proofs and a badge for its own site:
-<a href="sellers.html">browse sellers</a>.{state_link}</p>
+<a href="sellers.html">browse sellers</a>. What the verdicts mean and what they can't promise:
+<a href="method.html">method and limits</a>.{state_link}</p>
 {contact_html}
 <p class="engine">Built by engine {engine_version()}. <a href="{SOURCE_URL}">Read the code</a> that grades every endpoint.</p>
 </section>
@@ -497,10 +533,8 @@ def run(conn=None, log=print):
     json_path = config.REPORT_DIR / "scores.json"
     try:
         hosts = onchain_by_host(conn)
-        sums = all_summaries(conn)
-        total = sum(v["usd"] for v in sums.values())
-        own_usd = sum(v["usd"] * v["own_share"] for v in sums.values())  # approximation by payment share
-        onchain = {"hosts": hosts, "total_usd": total, "own_share": own_usd / total if total else 0}
+        t = counted_totals(hosts, all_summaries(conn))
+        onchain = {"hosts": hosts, "total_usd": t["usd"], "own_share": t["own_share"]}
     except Exception as exc:
         log(f"  (on-chain section skipped: {exc})")
         onchain = None

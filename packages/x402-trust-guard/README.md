@@ -47,6 +47,9 @@ withTrustGuard(client, {
 
 `checkFree(url, payTo?)` checks one URL yourself, for free, and returns the full result.
 
+What each verdict is based on, and what a pre-payment check can't promise (it never pays, so it can't test delivery):
+[method and limits](https://benmcalillycreative.github.io/x402-trust-board/method.html).
+
 ## Also available
 
 - **HTTP:** `GET https://x402-trust-check.ben-mcalilly.workers.dev/v1/check?url=…&payTo=…` ($0.01, x402)
