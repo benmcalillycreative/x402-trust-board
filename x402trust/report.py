@@ -189,6 +189,8 @@ def build_html(rows, crawl, onchain=None):
     grades = Counter(r["grade"] for r in graded)
     red = [r for r in rows if set(r["flags"]) & RED_FLAGS]
     n_mpp = sum(1 for r in rows if r["protocol"] == "mpp")
+    state_link = (' Monthly: <a href="state/index.html">State of agent payments</a>.'
+                  if (config.REPORT_DIR / "state" / "index.html").exists() else "")
     n_circle = sum(1 for r in rows if r.get("source") == "circle")
     circle_stat = (f'<div class="stat"><b>{n_circle:,}</b><span>only on Circle\'s marketplace</span></div>'
                    if n_circle else "")
@@ -438,7 +440,7 @@ problems on our side.</p>
 sign it with the wallet. Verified endpoints get a green mark, and if anything ever asks to be paid
 somewhere else, the board flags it. <a href="verify.html">Verify your payout address</a>.</p>
 <p>Every seller has its own page with all of its endpoints, its payout proofs and a badge for its own site:
-<a href="sellers.html">browse sellers</a>.</p>
+<a href="sellers.html">browse sellers</a>.{state_link}</p>
 {contact_html}
 <p class="engine">Built by engine {engine_version()}. <a href="{SOURCE_URL}">Read the code</a> that grades every endpoint.</p>
 </section>

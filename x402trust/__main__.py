@@ -7,6 +7,7 @@ The cycle
   report    write the leaderboard HTML + scores.json
   alerts    email watchers about anything that changed   (--dry-run to preview)
   signups   process self-serve alert sign-ups from the Worker (also part of run)
+  monthly [YYYY-MM]  write the "State of agent payments" snapshot (run does it early each month)
   payout    check sellers' published payout proofs (once a day per host)
   chain     count real USDC payments to sellers' Base wallets (incremental, time-capped)
             payout HOST   check one host right now and show what was found
@@ -28,10 +29,10 @@ Alerts
 import argparse
 import sys
 
-from . import (alerts, chain, config, crawl, crawl_circle, crawl_mpp, db, notes, payout, probe, report,
-               score, signups)
+from . import (alerts, chain, config, crawl, crawl_circle, crawl_mpp, db, monthly, notes, payout, probe,
+               report, score, signups)
 
-CYCLE = ["crawl", "probe", "payout", "chain", "score", "report", "signups", "alerts", "run", "status"]
+CYCLE = ["crawl", "probe", "payout", "chain", "score", "report", "signups", "alerts", "monthly", "run", "status"]
 MANAGE = ["note", "notes", "unnote", "watch", "unwatch", "watchers", "test-email"]
 
 
@@ -154,6 +155,13 @@ def main(argv=None):
         score.run(conn)
     if args.command in ("report", "run"):
         report.run(conn)
+    if args.command == "monthly":
+        monthly.run(conn, label=args.args[0] if args.args else None)
+    elif args.command == "run":
+        try:
+            monthly.auto(conn)
+        except Exception as exc:
+            print(f"Monthly snapshot failed: {exc}", file=sys.stderr)
     if args.command in ("signups", "run") or (args.command == "alerts" and not args.dry_run):
         try:
             signups.run()

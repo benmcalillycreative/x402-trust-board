@@ -165,6 +165,21 @@ class OnChain(unittest.TestCase):
         data = json.loads((config.REPORT_DIR / "onchain.json").read_text())
         self.assertEqual({h["host"] for h in data["hosts"]}, {"host-a.example", "host-b.example", "host-c.example"})
 
+    def test_monthly_snapshot(self):
+        from x402trust import monthly
+        score.run(self.conn, log=lambda *_: None)
+        md = monthly.run(self.conn, label="2026-10", log=lambda *_: None).read_text()
+        self.assertIn("# State of agent payments: October 2026", md)
+        self.assertIn("Real money on Base", md)
+        self.assertIn("| host-a.example |", md)
+        data = json.loads((config.REPORT_DIR / "state" / "2026-10.json").read_text())
+        self.assertGreater(data["onchain"]["payments"], 0)
+        self.assertIn("<h1>", (config.REPORT_DIR / "state" / "2026-10.html").read_text())
+        # The next issue compares itself with this one.
+        md2 = monthly.run(self.conn, label="2026-11", log=lambda *_: None).read_text()
+        self.assertIn("vs last month", md2.replace("(no change)", "vs last month"))
+        self.assertIn("2026-10.html", (config.REPORT_DIR / "state" / "index.html").read_text())
+
     def test_next_run_only_scans_new_blocks(self):
         STATE["head"] += 100
         STATE["logs"].append(transfer(STATE["head"] - 1, "0x" + "%040x" % 99, A, 0.01))

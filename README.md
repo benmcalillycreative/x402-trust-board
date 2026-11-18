@@ -206,6 +206,13 @@ records with their flags. The Cloudflare Worker in `worker/` turns that into a p
 `GET /v1/check?url=...&payTo=...` at $0.001, that answers ok / caution / avoid / unknown with reasons.
 See `worker/README.md` to deploy it.
 
+## State of agent payments (monthly)
+
+`python3 -m x402trust monthly [YYYY-MM]` writes a market snapshot to `reports/state/`: numbers
+(`.json`), a draft to edit and post (`.md`) and a page published with the board (`.html`). Each issue
+compares itself with the previous one. `run` writes last month's issue by itself in the first three
+days of each month.
+
 ## Automatic updates
 
 When this folder is a git checkout of the `main` branch, `run.sh` checks GitHub for new code
