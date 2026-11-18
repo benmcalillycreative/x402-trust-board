@@ -208,7 +208,17 @@ show no on-chain numbers yet.
 `seller/<host>.json` on the board holds each seller's grade, payout proofs and up to 1,000 endpoint
 records with their flags. The Cloudflare Worker in `worker/` turns that into a paid x402 endpoint,
 `GET /v1/check?url=...&payTo=...` at $0.01, that answers ok / caution / avoid / unknown with reasons.
-See `worker/README.md` to deploy it. The same Worker serves a free remote MCP tool at `/mcp`.
+See `worker/README.md` to deploy it. The same Worker serves a free remote MCP server at `/mcp`
+(tools `check_payment` and `check_listing`).
+
+**For sellers, free:** `GET /v1/listing?url=...` (and `listing.html` on the board) answers "why isn't my endpoint
+in the Bazaar?". It runs Coinbase's public validator (`POST /platform/v2/x402/validate`, the indexer's own checks),
+looks the payout address up in Coinbase's merchant list (`/platform/v2/x402/discovery/merchant`), adds the board's
+30-day availability, and returns findings with a fix for each. 30 checks a day per IP, cached 10 minutes per URL.
+
+**30-day availability:** every score run also computes, per endpoint, the share of counted checks that answered over
+the last 30 days (`uptime_30d`, `probes_30d`, `history_days`). Seller pages and `seller/<host>.json` show it against
+Coinbase's bar for featured listings (99% over 30 days), and watchers get an alert when an endpoint crosses that bar.
 
 `packages/x402-trust-guard/` is a one-line add-on for x402 clients (`withTrustGuard(client)`) that runs that
 check before every payment and refuses red flags. It is MIT-licensed (unlike the rest of this repo) so anyone

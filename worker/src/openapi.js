@@ -53,8 +53,15 @@ export function openapi(env, origin, price) {
       },
       "/v1/health": { get: { operationId: "health", summary: "Liveness and payout address", security: [],
         responses: { 200: { description: "OK" } } } },
-      "/mcp": { post: { operationId: "mcp", summary: "Free remote MCP server (tool: check_payment), 100 checks a day",
+      "/mcp": { post: { operationId: "mcp", summary: "Free remote MCP server (tools: check_payment, check_listing), 100 checks a day",
         security: [], responses: { 200: { description: "JSON-RPC response" } } } },
+      "/v1/listing": { get: { operationId: "listing", security: [],
+        summary: "For sellers, free: is this endpoint in Coinbase's Bazaar, and if not, why (with a fix for each finding)",
+        parameters: [
+          { name: "url", in: "query", required: true, description: "Your paid endpoint's https:// URL", schema: { type: "string", format: "uri" } },
+          { name: "method", in: "query", required: false, description: "GET (default) or POST", schema: { type: "string", enum: ["GET", "POST"] } },
+        ],
+        responses: { 200: { description: "Findings" }, 400: { description: "Bad input" }, 429: { description: "Daily free limit reached" } } } },
     },
   };
 }

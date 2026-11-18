@@ -19,7 +19,8 @@ def load(conn):
         SELECT e.resource, e.host, e.service_name, e.description, e.listed_usd, e.network,
                e.pay_to, e.l30_payers, e.l30_calls, e.curated, e.first_seen, e.delisted, e.protocol,
                e.source, e.circle_seen,
-               s.probes, s.uptime, s.p50_latency_ms, s.score, s.grade, s.flags, s.computed_at
+               s.probes, s.uptime, s.p50_latency_ms, s.score, s.grade, s.flags, s.computed_at,
+               s.uptime_30d, s.probes_30d, s.history_days, e.last_seen
         FROM scores s JOIN endpoints e USING (resource)
         ORDER BY s.score DESC, e.l30_payers DESC
         """
@@ -44,6 +45,7 @@ def export_json(rows, path):
                 "score": r["score"],
                 "grade": r["grade"],
                 "uptime": r["uptime"],
+                "uptime_30d": r.get("uptime_30d"),
                 "p50_latency_ms": r["p50_latency_ms"],
                 "listed_usd": r["listed_usd"],
                 "flags": r["flags"],
@@ -486,7 +488,8 @@ quoting a price, route-pattern listings like <code>/price/:address</code>, rate 
 problems on our side.</p>
 <p><b>Run an endpoint?</b> Prove your payout address is yours, free: publish it on your site or DNS and
 sign it with the wallet. Verified endpoints get a green mark, and if anything ever asks to be paid
-somewhere else, the board flags it. <a href="verify.html">Verify your payout address</a>.</p>
+somewhere else, the board flags it. <a href="verify.html">Verify your payout address</a>.
+Not showing up in the Bazaar? <a href="listing.html">Run the free listing check</a>.</p>
 <p>Every seller has its own page with all of its endpoints, its payout proofs and a badge for its own site:
 <a href="sellers.html">browse sellers</a>. What the verdicts mean and what they can't promise:
 <a href="method.html">method and limits</a>.{state_link}</p>

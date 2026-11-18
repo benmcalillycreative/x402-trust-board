@@ -10,6 +10,7 @@ most one email listing what changed since the last cycle:
   - asks for payment to a different wallet than before (skipped for services that
     use a fresh address on every request)
   - removed from, or back in, the Bazaar catalog
+  - availability over 30 days fell below, or came back above, the 99% Coinbase wants for featured listings
   - newly listed under the watched name
 
 The first cycle after someone is added sends a short "monitoring is on" email with
@@ -101,6 +102,12 @@ def _endpoints_for(conn, match):
 
 # ---------- state ----------
 
+def pct(x):
+    if x is None:
+        return "an unknown share"
+    return f"{round(100 * x, 1):g}%"
+
+
 def money(v):
     if v is None:
         return "an unknown amount"
@@ -126,6 +133,12 @@ def current_state(conn, ep, prev, notes):
         status = (prev or {}).get("status", "unknown")
     healthy = [p for p in probes if p["outcome"] == "healthy"]
     last = healthy[0] if healthy else None
+    sc = conn.execute("SELECT uptime_30d, probes_30d, history_days FROM scores WHERE resource=?",
+                      (ep["resource"],)).fetchone()
+    # Only judge the bar on enough history: a week and ten checks, so a new endpoint's first blip doesn't alert.
+    below = None
+    if sc and sc["uptime_30d"] is not None and (sc["probes_30d"] or 0) >= 10 and (sc["history_days"] or 0) >= 7:
+        below = sc["uptime_30d"] < config.CURATION_BAR
     quotes = [norm_addr(p["quoted_pay_to"]) for p in healthy[:3] if p["quoted_pay_to"]]
     return {
         "status": status,
@@ -137,6 +150,8 @@ def current_state(conn, ep, prev, notes):
         "delisted": bool(ep["delisted"]),
         "last_code": counted[0]["status_code"] if counted else None,
         "last_check": probes[0]["ts"] if probes else None,
+        "below_bar": below,
+        "uptime_30d": sc["uptime_30d"] if sc else None,
     }
 
 
@@ -158,6 +173,11 @@ def events_for(resource, prev, cur):
     if (prev.get("pay_to") and cur.get("pay_to") and prev["pay_to"] != cur["pay_to"]
             and not cur.get("rotating") and not prev.get("rotating")):
         ev.append(("wallet", f"Now asks for payment to {cur['pay_to']} (was {prev['pay_to']}): {resource}"))
+    if prev.get("below_bar") is False and cur.get("below_bar") is True:
+        ev.append(("bar", f"Availability over 30 days fell to {pct(cur.get('uptime_30d'))}, below the 99% Coinbase "
+                          f"wants for featured Bazaar listings: {resource}"))
+    elif prev.get("below_bar") is True and cur.get("below_bar") is False:
+        ev.append(("bar_ok", f"Back above 99% availability over 30 days ({pct(cur.get('uptime_30d'))}): {resource}"))
     if not prev.get("delisted") and cur.get("delisted"):
         ev.append(("delisted", f"Removed from the Bazaar catalog: {resource}"))
     elif prev.get("delisted") and not cur.get("delisted"):
@@ -223,7 +243,8 @@ def welcome_body(w, states):
         if len(down) > 20:
             lines.append(f"  …and {len(down) - 20} more")
     lines += ["", "From here on you'll get one email per check when something changes: an endpoint stops "
-              "answering or comes back, or starts asking a different price or wallet. No change, no email.",
+              "answering or comes back, drops out of the Bazaar, falls below 99% availability over 30 days, or "
+              "starts asking a different price or wallet. No change, no email.",
               "", "Ben"]
     return "\n".join(lines) + footer(w)
 
@@ -235,7 +256,7 @@ def footer(w):
 
 
 def change_body(w, events):
-    order = {"down": 0, "wallet": 1, "price": 2, "delisted": 3, "up": 4, "relisted": 5, "new": 6}
+    order = {"down": 0, "wallet": 1, "price": 2, "delisted": 3, "bar": 4, "up": 5, "relisted": 6, "bar_ok": 7, "new": 8}
     events = sorted(events, key=lambda e: order.get(e[0], 9))
     lines = [f"Hi{(' ' + w['name']) if w.get('name') else ''},", "",
              f"Here's what changed on {w['match']} since the last check:", ""]

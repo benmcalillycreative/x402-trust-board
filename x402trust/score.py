@@ -448,6 +448,41 @@ def score_endpoint(ep, probes, ctx):
     }
 
 
+def availability(conn, days=None, now=None):
+    """Per endpoint over the last `days` (Coinbase measures featured listings over 30): how many counted checks
+    answered, out of how many, and how many days of history that covers. {resource: (up, counted, history_days)}.
+    Aggregated in SQL so a month of checks across every listing stays quick."""
+    days = days or config.AVAILABILITY_DAYS
+    now = now or datetime.now(timezone.utc)
+    since = (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    up, counted, first = defaultdict(int), defaultdict(int), {}
+    for r in conn.execute(
+        """SELECT resource, outcome, status_code,
+                  (COALESCE(error,'') LIKE '%PROTOCOL_VERSION%' OR COALESCE(error,'') LIKE '%TLSV1_ALERT_ACCESS_DENIED%') AS tls,
+                  COUNT(*) AS n, MIN(ts) AS first_ts
+           FROM probes WHERE ts >= ? GROUP BY resource, outcome, status_code, tls""", (since,)):
+        p = {"outcome": r["outcome"], "status_code": r["status_code"], "resource": r["resource"],
+             "error": "PROTOCOL_VERSION" if r["tls"] else ""}
+        o = outcome_of(p)
+        res = r["resource"]
+        if res not in first or r["first_ts"] < first[res]:
+            first[res] = r["first_ts"]
+        if o in NOT_COUNTED:
+            continue
+        counted[res] += r["n"]
+        if o in UP:
+            up[res] += r["n"]
+    out = {}
+    for res, n in counted.items():
+        try:
+            start = datetime.strptime(first[res], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            hist = max(1, min(days, (now - start).days + 1))
+        except (ValueError, KeyError):
+            hist = None
+        out[res] = (up[res], n, hist)
+    return out
+
+
 def run(conn=None, log=print):
     conn = conn or db.connect()
     since = (datetime.now(timezone.utc) - timedelta(days=config.SCORE_WINDOW_DAYS)).strftime(
@@ -466,6 +501,7 @@ def run(conn=None, log=print):
             quotes_by_host[p["host"]].append(norm_addr(p["quoted_pay_to"]))
     ctx.find_rotating_hosts(quotes_by_host)
 
+    avail = availability(conn)
     ts = db.now()
     graded = 0
     conn.execute("DELETE FROM scores")
@@ -474,10 +510,13 @@ def run(conn=None, log=print):
         if not probes and ep["delisted"]:
             continue
         s = score_endpoint(ep, probes, ctx)
+        a_up, a_n, a_days = avail.get(ep["resource"], (0, 0, None))
         conn.execute(
-            "INSERT OR REPLACE INTO scores VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO scores (resource, computed_at, probes, uptime, p50_latency_ms, score, grade, flags, "
+            "uptime_30d, probes_30d, history_days) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (ep["resource"], ts, s["probes"], s["uptime"], s["p50_latency_ms"],
-             s["score"], s["grade"], json.dumps(s["flags"])),
+             s["score"], s["grade"], json.dumps(s["flags"]),
+             round(a_up / a_n, 4) if a_n else None, a_n or None, a_days),
         )
         graded += 1
     conn.commit()

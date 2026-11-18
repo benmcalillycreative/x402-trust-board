@@ -66,7 +66,10 @@ CREATE TABLE IF NOT EXISTS scores (
     p50_latency_ms      INTEGER,
     score               INTEGER,
     grade               TEXT,
-    flags               TEXT                -- JSON list
+    flags               TEXT,               -- JSON list
+    uptime_30d          REAL,               -- share of counted checks that answered, last AVAILABILITY_DAYS
+    probes_30d          INTEGER,
+    history_days        INTEGER             -- days of check history inside that window
 );
 """
 
@@ -95,6 +98,12 @@ def _migrate(conn):
     if "source" not in cols:  # v0.9.4: x402 listings from Circle's marketplace as well as the Bazaar
         conn.execute("ALTER TABLE endpoints ADD COLUMN source TEXT DEFAULT 'bazaar'")
         conn.execute("ALTER TABLE endpoints ADD COLUMN circle_seen TEXT")
+        conn.commit()
+    scols = {r[1] for r in conn.execute("PRAGMA table_info(scores)")}
+    if scols and "uptime_30d" not in scols:  # v0.10: 30-day availability next to Coinbase's 99% bar
+        conn.execute("ALTER TABLE scores ADD COLUMN uptime_30d REAL")
+        conn.execute("ALTER TABLE scores ADD COLUMN probes_30d INTEGER")
+        conn.execute("ALTER TABLE scores ADD COLUMN history_days INTEGER")
         conn.commit()
     pcols = {r[1] for r in conn.execute("PRAGMA table_info(probes)")}
     if "quoted_example" not in pcols:  # v0.9.4: the seller marked the quoted offer as an example

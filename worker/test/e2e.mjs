@@ -24,6 +24,18 @@ const fake = http.createServer((req, res) => {
     const json = (code, obj) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
     if (req.url === "/seller/api.example.com.json") return json(200, SELLER);
     if (req.url.startsWith("/seller/")) return json(404, {});
+    if (req.url === "/cdp/v2/x402/validate") {
+      const r = JSON.parse(body).resource;
+      if (r.includes("/broken")) return json(200, { valid: false, statusCode: 400, x402Version: null, paymentRequirements: null, bazaarExtension: null,
+        preflight: [{ check: "reachable", passed: true, detail: "ok", severity: "required" }, { check: "returns_402", passed: false, detail: "Endpoint returned 400", severity: "required" }],
+        simulation: { outcome: "rejected", rejectionReason: "endpoint did not return 402" }, index: null });
+      return json(200, { valid: true, statusCode: 402, x402Version: 2, bazaarExtension: { info: {} },
+        paymentRequirements: { scheme: "exact", network: "eip155:8453", amount: "1000", payTo: A },
+        preflight: [{ check: "returns_402", passed: true, detail: "ok", severity: "required" }],
+        simulation: { outcome: "accepted" }, index: { active: true, lastCrawledAt: "2026-11-18T00:00:00Z" } });
+    }
+    if (req.url.startsWith("/cdp/v2/x402/discovery/merchant?payTo=" + A)) return json(200, { x402Version: 2, payTo: A,
+      resources: [{ resource: "https://api.example.com/x", type: "http", x402Version: 2, description: "d" }], pagination: { limit: 100, offset: 0, total: 1 } });
     if (req.url === "/fac/supported") return json(200, { kinds: [{ x402Version: 2, scheme: "exact", network: "eip155:8453" }], extensions: ["bazaar"], signers: {} });
     const p = body ? JSON.parse(body) : {};
     const payer = p.paymentPayload?.payload?.authorization?.from;
@@ -37,8 +49,12 @@ const F = `http://127.0.0.1:${fake.address().port}`;
 const PORT = 8799;
 const W = `http://127.0.0.1:${PORT}`;
 
-const dev = spawn("npx", ["wrangler", "dev", "--port", String(PORT), "--ip", "127.0.0.1",
-  "--var", `ALERTS_TOKEN:t0ken`, "--var", "PRICE:$0.01", "--var", `BOARD_URL:${F}/`, "--var", `FACILITATOR_URL:${F}/fac`, "--var", `PAY_TO:${PAY_TO}`],
+// A fresh storage folder each run, so a run that was cut short can't leave queue items behind.
+const { mkdtempSync } = await import("node:fs");
+const { tmpdir } = await import("node:os");
+const STATE = mkdtempSync(`${tmpdir()}/x402t-e2e-`);
+const dev = spawn("npx", ["wrangler", "dev", "--port", String(PORT), "--ip", "127.0.0.1", "--persist-to", STATE,
+  "--var", `ALERTS_TOKEN:t0ken`, "--var", "PRICE:$0.01", "--var", `BOARD_URL:${F}/`, "--var", `FACILITATOR_URL:${F}/fac`, "--var", `PAY_TO:${PAY_TO}`, "--var", `CDP_PUBLIC_API:${F}/cdp`],
   { env: { ...process.env, NO_PROXY: "127.0.0.1,localhost", no_proxy: "127.0.0.1,localhost" }, stdio: ["ignore", "pipe", "pipe"], detached: true });
 let log = "";
 dev.stdout.on("data", (d) => (log += d));
@@ -59,7 +75,10 @@ try {
   assert.equal((await fetch(`${W}/v1/check`)).status, 402, "the bare endpoint shows its price to scanners");
   const spec = await (await fetch(`${W}/openapi.json`)).json();
   assert.equal(spec.paths["/v1/check"].get["x-payment-info"].price.amount, "0.01");
-  assert.deepEqual((await (await fetch(`${W}/.well-known/x402`)).json()).resources, [`${W}/v1/check`]);
+  // wrangler dev serves the custom domain's host name, so compare the path only.
+  const wk = (await (await fetch(`${W}/.well-known/x402`)).json()).resources;
+  assert.equal(wk.length, 1);
+  assert.match(wk[0], /\/v1\/check$/);
 
   const unpaid = await fetch(`${W}/v1/check?url=${encodeURIComponent("https://api.example.com/x")}`);
   assert.equal(unpaid.status, 402);
@@ -128,6 +147,26 @@ try {
   assert.equal(res.result.structuredContent.verdict, "ok");
   assert.match(res.result.content[0].text, /^OK:/);
   console.log("mcp OK");
+
+  // Listing check for sellers: free, CORS-readable from the board's pages, with fixes.
+  const L = (u, m = "") => fetch(`${W}/v1/listing?url=${encodeURIComponent(u)}${m}`);
+  assert.equal((await L("http://api.example.com/x")).status, 400);
+  const lr = await L("https://api.example.com/x");
+  assert.equal(lr.headers.get("access-control-allow-origin"), "*");
+  const lj = await lr.json();
+  assert.equal(lr.status, 200, JSON.stringify(lj));
+  assert.equal(lj.listed, true);
+  assert.equal(lj.payTo, A);
+  assert.ok(lj.findings.some((f) => /Your payout address in the Bazaar/.test(f.title) && /including this one/.test(f.detail)));
+  assert.equal((await (await L("https://api.example.com/x")).json()).cached, true, "repeat checks are served from cache");
+  const lb = await (await L("https://api.example.com/broken", "&method=POST")).json();
+  assert.equal(lb.listed, false);
+  assert.ok(lb.findings.some((f) => f.status === "fail" && f.fix));
+  const tl = await call({ jsonrpc: "2.0", id: 4, method: "tools/list" });
+  assert.deepEqual(tl.result.tools.map((t) => t.name), ["check_payment", "check_listing"]);
+  const lt = await call({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "check_listing", arguments: { url: "https://api.example.com/broken" } } });
+  assert.match(lt.result.content[0].text, /Not listed/);
+  console.log("listing check OK");
   console.log("e2e passed");
   done(0);
 } catch (e) {

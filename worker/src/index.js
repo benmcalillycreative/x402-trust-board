@@ -16,6 +16,7 @@ import { parseTarget, verdict } from "./check.js";
 import { signups } from "./signups.js";
 import { mcp } from "./mcp.js";
 import { openapi, wellKnown } from "./openapi.js";
+import { analyze, findPayTo, parseListingInput, LISTING_FREE_PER_DAY } from "./listing.js";
 
 const BASE = "eip155:8453";
 const DEFAULT_PRICE = "$0.01";
@@ -85,6 +86,90 @@ async function loadSeller(env, host) {
   return res.json();
 }
 
+function cors(c, res) {
+  res.headers.set("Access-Control-Allow-Origin", "*");
+  res.headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.headers.set("Access-Control-Max-Age", "86400");
+  return res;
+}
+
+const CDP = (env) => (env.CDP_PUBLIC_API || "https://api.cdp.coinbase.com/platform").replace(/\/+$/, "");
+
+async function fetchJson(url, init, ms = 15000) {
+  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+  const text = await res.text();
+  let body = null;
+  try { body = JSON.parse(text); } catch {}
+  if (!res.ok) throw new Error(`HTTP ${res.status}${body?.errorMessage ? `: ${body.errorMessage}` : ""}`);
+  return body;
+}
+
+async function underLimit(env, ip, kind, perDay) {
+  if (!env.SIGNUPS) return true;
+  const key = `rl:${kind}:${ip}:${Math.floor(Date.now() / 86400e3)}`;
+  const n = parseInt((await env.SIGNUPS.get(key)) || "0", 10) + 1;
+  await env.SIGNUPS.put(key, String(n), { expirationTtl: 86400 });
+  return n <= perDay;
+}
+
+async function runListing(env, target, method) {
+  let validate = null, validateError = null, merchant = null, merchantError = null, seller;
+  try {
+    validate = await fetchJson(`${CDP(env)}/v2/x402/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "user-agent": "x402-trust-board/1.0 (+listing check)" },
+      body: JSON.stringify({ resource: target.url, method }),
+    }, 25000);
+  } catch (e) {
+    validateError = `Coinbase's validator: ${e.message || e}`;
+  }
+  const payTo = findPayTo(validate?.paymentRequirements);
+  if (payTo && /^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/.test(payTo)) {
+    try {
+      merchant = await fetchJson(`${CDP(env)}/v2/x402/discovery/merchant?payTo=${encodeURIComponent(payTo)}&limit=100&offset=0`);
+    } catch (e) {
+      merchantError = `${e.message || e}`;
+    }
+  }
+  try {
+    seller = await loadSeller(env, target.host);
+  } catch {
+    seller = undefined; // the board couldn't be read: say nothing about it rather than "not on the board"
+  }
+  const out = analyze({ target, validate, merchant, seller, validateError, merchantError });
+  return {
+    url: target.url,
+    method,
+    checked_at: new Date().toISOString(),
+    ...out,
+    coinbase: validate && {
+      valid: validate.valid, statusCode: validate.statusCode, x402Version: validate.x402Version,
+      simulation: validate.simulation, index: validate.index,
+    },
+    note: "Uses Coinbase's public validator and merchant discovery list plus the board's own unpaid checks. Nothing is paid.",
+  };
+}
+
+async function listingCheck(c) {
+  const parsed = parseListingInput(c.req.query("url"), c.req.query("method"));
+  if (parsed.error) return c.json({ error: parsed.error }, 400);
+  const { target, method } = parsed;
+  const cacheKey = `ls:${method}:${target.url}`;
+  if (c.env.SIGNUPS) {
+    const hit = await c.env.SIGNUPS.get(cacheKey);
+    if (hit) return c.json({ ...JSON.parse(hit), cached: true });
+  }
+  const ip = c.req.header("cf-connecting-ip") || "unknown";
+  if (!(await underLimit(c.env, ip, "listing", LISTING_FREE_PER_DAY))) {
+    return c.json({ error: `Free limit reached (${LISTING_FREE_PER_DAY} listing checks a day). Try again tomorrow.` }, 429);
+  }
+  const result = await runListing(c.env, target, method);
+  if (c.env.SIGNUPS && result.coinbase) {
+    await c.env.SIGNUPS.put(cacheKey, JSON.stringify(result), { expirationTtl: 600 });
+  }
+  return c.json(result);
+}
+
 const app = new Hono();
 
 app.get("/", (c) =>
@@ -97,7 +182,8 @@ app.get("/", (c) =>
     method: `${c.env.BOARD_URL}method.html`,
     board: c.env.BOARD_URL,
     data: "Free bulk data: scores.json, payouts.json and seller/<host>.json on the board",
-    mcp: "Remote MCP server at /mcp (tool: check_payment), free up to 100 checks a day",
+    mcp: "Remote MCP server at /mcp (tools: check_payment, check_listing), free up to 100 checks a day",
+    listing: "For sellers, free: GET /v1/listing?url=<your endpoint>[&method=POST] explains why it is or isn't in the Bazaar",
   })
 );
 
@@ -110,7 +196,11 @@ app.get("/openapi.json", (c) => c.json(openapi(c.env, new URL(c.req.url).origin,
 app.get("/.well-known/x402", (c) => c.json(wellKnown(new URL(c.req.url).origin)));
 
 // Free MCP tool (capped per IP per day) for agents in Claude, Cursor and other MCP clients.
-app.all("/mcp", (c) => mcp(c, loadSeller));
+app.all("/mcp", (c) => mcp(c, loadSeller, runListing));
+
+// Free for sellers: "why isn't my endpoint in the Bazaar?" Readable from the board's own pages.
+app.options("/v1/listing", (c) => cors(c, c.body(null, 204)));
+app.get("/v1/listing", async (c) => cors(c, await listingCheck(c)));
 
 // Reject bad input before the paywall, so nobody pays for a typo.
 app.use("/v1/check", async (c, next) => {

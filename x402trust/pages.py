@@ -110,6 +110,35 @@ def page(title, body, description=""):
             f'<style>{PAGE_CSS}</style></head><body><main>{body}</main></body></html>')
 
 
+def pct(x):
+    """0.9934 -> '99.3%'; 1.0 -> '100%'."""
+    if x is None:
+        return "—"
+    v = round(100 * x, 1)
+    return f"{v:g}%"
+
+
+def availability_30d(rows):
+    """Host-level 30-day availability: the endpoint average, how many fall short of Coinbase's 99% bar for featured
+    listings, and how many days of history it rests on. None when nothing has been checked in the window."""
+    measured = [r for r in rows if r.get("uptime_30d") is not None and (r.get("probes_30d") or 0) > 0]
+    if not measured:
+        return None
+    avg = sum(r["uptime_30d"] for r in measured) / len(measured)
+    return {
+        "average": round(avg, 4),
+        "endpoints_measured": len(measured),
+        "endpoints_below_bar": sum(1 for r in measured if r["uptime_30d"] < config.CURATION_BAR),
+        "history_days": max((r.get("history_days") or 0) for r in measured) or None,
+        "bar": config.CURATION_BAR,
+    }
+
+
+def listing_link(resource, prefix=""):
+    from urllib.parse import quote
+    return f'{prefix}listing.html?url={quote(resource, safe="")}'
+
+
 def chips(flags):
     out = []
     for f in flags:
@@ -150,6 +179,19 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
     body.append(f'<div class="card"><h2>Summary</h2><p>{esc(" · ".join(summary))}</p>'
                 f'<p class="muted">Every endpoint is checked a few times a day without paying: does it answer, what '
                 f'does it ask for, and does that match its listing. <a href="../index.html#about">How grading works</a>.</p></div>')
+    av = availability_30d(rows)
+    if av:
+        span = (f"the last {av['history_days']} days" if av["history_days"] and av["history_days"] < config.AVAILABILITY_DAYS
+                else f"the last {config.AVAILABILITY_DAYS} days")
+        below = av["endpoints_below_bar"]
+        verdict = ("Every endpoint is at or above 99%." if not below else
+                   f"{below} of {av['endpoints_measured']} endpoint{'s' if av['endpoints_measured'] != 1 else ''} "
+                   f"below 99%.")
+        body.append(f'<div class="card"><h2>Availability</h2><p><b>{esc(pct(av["average"]))}</b> of checks answered over '
+                    f'{esc(span)}. {esc(verdict)}</p><p class="muted">Coinbase features Bazaar listings that are available '
+                    f'at least 99% of the time over 30 days (above 99.5% gets priority), measured by its own probe. These '
+                    f'are the board\'s unpaid checks: a second opinion, not Coinbase\'s number. Not showing up in the '
+                    f'Bazaar? <a href="../listing.html">Run the free listing check</a>.</p></div>')
     if proofs:
         items = "".join(
             f'<li><code>{esc(p["address"])}</code>: {esc(LEVEL_TEXT.get(p["level"], p["level"]))}</li>' for p in proofs)
@@ -173,19 +215,25 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
     for r in sorted(rows, key=lambda r: (-(r["score"] or -1), r["resource"])):
         path = r["resource"].split(host, 1)[-1] or "/"
         g = r["grade"] or "—"
-        trs.append(f'<tr><td><code>{esc(path)}</code><br>{chips(r["flags"])}</td>'
+        u30 = r.get("uptime_30d")
+        low = ' style="color:var(--warn)"' if u30 is not None and u30 < config.CURATION_BAR else ""
+        check = (f' <a class="muted" href="{esc(listing_link(r["resource"], "../"))}">listing check</a>'
+                 if (r.get("protocol") or "x402") == "x402" else "")
+        trs.append(f'<tr><td><code>{esc(path)}</code>{check}<br>{chips(r["flags"])}</td>'
                    f'<td class="g" style="color:{GRADE_COLOR.get(g, "inherit")}">{esc(g)}</td>'
                    f'<td>{esc("—" if r["uptime"] is None else str(round(100 * r["uptime"])) + "%")}</td>'
+                   f'<td{low}>{esc(pct(u30))}</td>'
                    f'<td>{esc("—" if r["listed_usd"] is None else "$" + format(r["listed_usd"], ".4f").rstrip("0").rstrip("."))}</td>'
                    f'<td>{esc((r.get("protocol") or "x402").upper())}</td></tr>')
     body.append('<div class="card"><h2>Endpoints</h2><div class="wrap"><table><thead><tr><th>Endpoint</th><th>Grade</th>'
-                '<th>Answered</th><th>Listed price</th><th>Protocol</th></tr></thead><tbody>'
+                '<th>Answered (7 days)</th><th>30 days</th><th>Listed price</th><th>Protocol</th></tr></thead><tbody>'
                 + "".join(trs) + "</tbody></table></div></div>")
-    if config.API_URL:
+    if config.PUBLIC_API:
         body.append(
             f'<div class="card"><h2>Get alerts</h2><p>One email when an endpoint here stops answering, comes back, '
-            f'or starts asking a different price or wallet. Nothing otherwise.</p>'
-            f'<form class="alert" method="post" action="{esc(config.API_URL)}/v1/alerts/subscribe">'
+            f'drops out of the Bazaar, falls below 99% availability over 30 days, or starts asking a different price '
+            f'or wallet. Nothing otherwise.</p>'
+            f'<form class="alert" method="post" action="{esc(config.PUBLIC_API)}/v1/alerts/subscribe">'
             f'<input type="hidden" name="host" value="{esc(host)}">'
             f'<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'
             f'<input type="email" name="email" required placeholder="you@example.com" aria-label="Email">'
@@ -222,6 +270,9 @@ def seller_json(host, rows, proofs, name, onchain=None):
             "grade": r["grade"] if r["grade"] not in (None, "—") else None,
             "score": r["score"] if r["grade"] not in (None, "—") else None,
             "uptime": r["uptime"],
+            "uptime_30d": r.get("uptime_30d"),
+            "probes_30d": r.get("probes_30d"),
+            "history_days": r.get("history_days"),
             "p50_latency_ms": r["p50_latency_ms"],
             "probes": r["probes"],
             "listed_usd": r["listed_usd"],
@@ -241,6 +292,7 @@ def seller_json(host, rows, proofs, name, onchain=None):
         "endpoints_total": len(rows),
         "endpoints_graded": sum(1 for r in rows if r["grade"] not in (None, "—")),
         "red_flag_endpoints": sum(1 for r in rows if any(severity(f) == "red" for f in r["flags"])),
+        "availability_30d": availability_30d(rows),
         "payout": {
             "verified": level in ("dns_signed", "site_signed"),
             "best_level": level,
@@ -308,34 +360,125 @@ never how it is graded. A seller who thinks a finding is wrong can reply to any 
 def pro_page():
     """The seller plan: what sellers get, and a form to ask for early access."""
     form = (
-        f'<form class="alert" method="post" action="{esc(config.API_URL)}/v1/alerts/pro" style="flex-direction:column;align-items:stretch">'
+        f'<form class="alert" method="post" action="{esc(config.PUBLIC_API)}/v1/alerts/pro" style="flex-direction:column;align-items:stretch">'
         f'<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'
         f'<input type="email" name="email" required placeholder="you@example.com" aria-label="Email">'
         f'<input type="text" name="host" placeholder="Your service, e.g. api.example.com" aria-label="Your service" '
         f'inputmode="url" pattern="[A-Za-z0-9.:/-]+">'
         f'<textarea name="note" rows="3" placeholder="Anything we should know (optional)" aria-label="Note"></textarea>'
         f'<button type="submit">Ask for early access</button></form>'
-    ) if config.API_URL else '<p>Reply to any board email, or open an issue on the board\'s GitHub, and say which service you run.</p>'
+    ) if config.PUBLIC_API else '<p>Reply to any board email, or open an issue on the board\'s GitHub, and say which service you run.</p>'
     body = (
         '<p class="muted"><a href="index.html">x402 Trust Board</a> / For sellers</p>'
         '<h1>For sellers</h1>'
-        '<p class="sub">Agents increasingly check the board before they pay. Make sure what they see about you is right, '
-        'and find out the moment something breaks.</p>'
+        '<p class="sub">Get listed, stay listed, and know the moment something breaks. Agents check the board before '
+        'they pay, and Coinbase features only listings that stay up.</p>'
         '<div class="card"><h2>Free, for everyone</h2><ul>'
-        '<li>Your grade, endpoints and payout proofs on your own <a href="sellers.html">seller page</a>, with a badge for your site</li>'
-        '<li><a href="verify.html">Payout verification</a>: a DNS record and one signature, and agents can tell your wallet from a hijacker\'s</li>'
-        '<li>Alerts when your endpoints stop answering or change price or wallet</li></ul></div>'
-        '<div class="card"><h2>Pro (early access)</h2><ul>'
-        '<li>Every one of your endpoints checked every cycle, not on the rotating sample, so your grade reflects all of them</li>'
-        '<li>Alerts on all your endpoints to everyone on your team</li>'
-        '<li>Hands-on help setting up a signed payout proof</li>'
-        '<li>A monthly report on your service: uptime, failed checks, what agents saw, and the payments counted on chain</li>'
-        '</ul><p class="muted">Pricing is being set with the first sellers. <b>Grades are never for sale:</b> Pro doesn\'t '
-        'change how you are graded, only how often and how closely you are watched.</p>'
+        '<li><a href="listing.html">Listing check</a>: is your endpoint in the Bazaar, and if not, exactly why. It runs '
+        'Coinbase\'s own validator, looks up your payout address in Coinbase\'s merchant list, and gives a fix for '
+        'each problem</li>'
+        '<li>Your grade, endpoints, 30-day availability and payout proofs on your own <a href="sellers.html">seller '
+        'page</a>, with a badge for your site</li>'
+        '<li><a href="verify.html">Payout verification</a>: a DNS record and one signature, and agents can tell your '
+        'wallet from a hijacker\'s</li>'
+        '<li>Alerts when an endpoint stops answering, drops out of the Bazaar, falls below 99% over 30 days, or '
+        'changes price or wallet</li></ul></div>'
+        '<div class="card"><h2>Seller plan (early access)</h2><ul>'
+        '<li>Every one of your endpoints checked every cycle, not on the rotating sample, so your availability record '
+        'covers all of them</li>'
+        '<li>A monthly availability report per endpoint against Coinbase\'s bar for featured listings (99% over 30 days, '
+        '99.5% for priority), with every failed check and what it returned</li>'
+        '<li>A listing review: we run the listing check across all your routes, then tell you what to fix and what to '
+        'send Coinbase for your Agentic.Market card</li>'
+        '<li>Alerts to everyone on your team, and hands-on help with a signed payout proof</li>'
+        '</ul><p class="muted">Pricing is being set with the first sellers. <b>Grades are never for sale:</b> the plan '
+        'doesn\'t change how you are graded, only how often and how closely you are watched. The availability numbers '
+        'are the board\'s unpaid checks, a second opinion next to Coinbase\'s own probe.</p>'
         f'{form}</div>'
     )
     return page("For sellers: x402 Trust Board", body,
                 "What sellers of agent-payable APIs get from the x402 Trust Board, free and Pro.")
+
+
+LISTING_JS = """
+(function(){
+var API=document.getElementById('lc').dataset.api;
+var f=document.getElementById('lc'),out=document.getElementById('out'),btn=f.querySelector('button');
+function el(t,c,txt){var e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e;}
+var LABEL={pass:'OK',fail:'Fix',warn:'Check',info:'Note'};
+var CLS={pass:'good',fail:'red',warn:'warn',info:''};
+function show(d){
+  out.textContent='';
+  var card=el('div','card');
+  card.appendChild(el('h2',null,d.listed?'Listed in the Bazaar':'Not listed in the Bazaar'));
+  card.appendChild(el('p',null,d.summary));
+  var meta=el('p','muted','Checked '+d.checked_at+(d.cached?' (cached for 10 minutes)':'')+'. '+(d.note||''));
+  card.appendChild(meta);out.appendChild(card);
+  var order={fail:0,warn:1,info:2,pass:3};
+  (d.findings||[]).slice().sort(function(a,b){return order[a.status]-order[b.status];}).forEach(function(x){
+    var c=el('div','card');var h=el('h2');
+    h.appendChild(el('span','chip '+CLS[x.status],LABEL[x.status]));h.appendChild(document.createTextNode(' '+x.title));
+    c.appendChild(h);if(x.detail)c.appendChild(el('p',null,x.detail));
+    if(x.fix){var p=el('p');p.appendChild(el('b',null,'How to fix: '));p.appendChild(document.createTextNode(x.fix));c.appendChild(p);}
+    out.appendChild(c);
+  });
+  if(d.board&&d.board.page){var p=el('p','muted');p.appendChild(document.createTextNode('Full history on your '));
+    var a=el('a',null,'seller page');a.href=d.board.page;p.appendChild(a);p.appendChild(document.createTextNode('.'));out.appendChild(p);}
+}
+function run(url,method){
+  out.textContent='';out.appendChild(el('p','muted','Checking with Coinbase\\u2019s validator\\u2026 this takes a few seconds.'));
+  btn.disabled=true;
+  fetch(API+'/v1/listing?url='+encodeURIComponent(url)+'&method='+method)
+   .then(function(r){return r.json().then(function(j){return [r.status,j];});})
+   .then(function(rj){btn.disabled=false;if(rj[0]!==200){out.textContent='';out.appendChild(el('p',null,rj[1].error||('Error '+rj[0])));return;}show(rj[1]);})
+   .catch(function(){btn.disabled=false;out.textContent='';out.appendChild(el('p',null,'Couldn\\u2019t reach the check service. Try again in a minute.'));});
+}
+f.addEventListener('submit',function(e){e.preventDefault();var u=f.url.value.trim();var m=f.method.value;
+  try{history.replaceState(null,'','?url='+encodeURIComponent(u)+(m==='POST'?'&method=POST':''));}catch(_){}
+  run(u,m);});
+var q=new URLSearchParams(location.search);
+if(q.get('url')){f.url.value=q.get('url');if(q.get('method')==='POST')f.method.value='POST';run(f.url.value,f.method.value);}
+})();
+"""
+
+
+def listing_page():
+    """'Why isn't my endpoint in the Bazaar?' A free check for sellers, run by the check API."""
+    body = (
+        '<p class="muted"><a href="index.html">x402 Trust Board</a> / Listing check</p>'
+        '<h1>Why isn\'t my endpoint in the Bazaar?</h1>'
+        '<p class="sub">Paste your paid endpoint. This runs Coinbase\'s own validator (the checks the Bazaar indexer '
+        'runs), looks your payout address up in Coinbase\'s merchant list, and adds the board\'s 30-day availability '
+        'against Coinbase\'s 99% bar for featured listings. Every problem comes with a fix. Free, nothing is paid.</p>'
+        f'<div class="card"><form class="alert" id="lc" data-api="{esc(config.PUBLIC_API)}">'
+        '<input type="text" name="url" required placeholder="https://api.example.com/v1/your-route" aria-label="Endpoint URL" '
+        'inputmode="url" style="flex:3 1 320px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;'
+        'background:var(--bg);color:var(--ink);font:inherit">'
+        '<select name="method" aria-label="HTTP method" style="padding:8px;border:1px solid var(--line);border-radius:8px;'
+        'background:var(--bg);color:var(--ink);font:inherit"><option>GET</option><option>POST</option></select>'
+        '<button type="submit">Check listing</button></form>'
+        '<p class="muted">Same check from an agent: the <code>check_listing</code> tool on the MCP server '
+        f'<code>{esc(config.PUBLIC_API)}/mcp</code>, or <code>GET {esc(config.PUBLIC_API)}/v1/listing?url=…</code>. '
+        '30 checks a day per address.</p></div>'
+        '<div id="out" aria-live="polite"></div>'
+        '<div class="card"><h2>How a route gets into the Bazaar</h2><ol>'
+        '<li>It answers an unpaid request with <b>402</b>, with the terms in the <code>PAYMENT-REQUIRED</code> header '
+        '(x402 v2). Input validation that returns 400 before the payment middleware stops the indexer.</li>'
+        '<li>It advertises an <code>extensions.bazaar</code> block: an example input that still gets a 402, and the '
+        'schema that example validates against.</li>'
+        '<li>A paid call settles through the CDP facilitator with <code>paymentPayload.resource</code> and '
+        '<code>paymentPayload.extensions.bazaar</code> set. Indexing can take up to 15 minutes; '
+        '<code>processing</code> isn\'t an error, and a resource with no settled payment for 30 days drops out.</li>'
+        '<li>The Agentic.Market card (name, category, description) is curated by Coinbase: ask for it with an issue on '
+        '<a href="https://github.com/coinbase/cdp-sdk/issues" rel="noopener">coinbase/cdp-sdk</a>.</li>'
+        '<li>Featured placement needs 99% availability over 30 days on Coinbase\'s probe, complete metadata and live '
+        'mainnet payments.</li></ol>'
+        '<p class="muted">Source: Coinbase\'s <a href="https://docs.cdp.coinbase.com/x402/seller/get-discovered" '
+        'rel="noopener">Get discovered</a> docs. Want this watched for you? <a href="pro.html">See the seller plan</a>.</p></div>'
+        f'<script>{LISTING_JS}</script>'
+    )
+    return page("Listing check: x402 Trust Board", body,
+                "Why isn't my x402 endpoint in Coinbase's Bazaar? A free check with a fix for each problem.")
 
 
 def build(conn, rows, outdir, onchain_hosts=None, log=print):
@@ -374,11 +517,12 @@ def build(conn, rows, outdir, onchain_hosts=None, log=print):
         f'<td class="g" style="color:{GRADE_COLOR.get(g, "inherit")}">{esc(g or "—")}</td><td>{c}</td>'
         f'<td>{"✓" if v else ""}</td></tr>' for n, s, g, v, c in index)
     body = (f'<p class="muted"><a href="index.html">x402 Trust Board</a></p><h1>Sellers</h1>'
-            f'<p class="sub">Run one of these? <a href="pro.html">What sellers get</a>. {len(index):,} sellers with endpoints listed in the x402 Bazaar, Circle\'s Agent Marketplace or the MPP directory.</p>'
+            f'<p class="sub">Run one of these? <a href="listing.html">Check why a route isn\'t in the Bazaar</a> · <a href="pro.html">What sellers get</a>. {len(index):,} sellers with endpoints listed in the x402 Bazaar, Circle\'s Agent Marketplace or the MPP directory.</p>'
             f'<div class="card wrap"><table><thead><tr><th>Seller</th><th>Grade</th><th>Endpoints</th>'
             f'<th>Payout verified</th></tr></thead><tbody>{lis}</tbody></table></div>')
     (outdir / "pro.html").write_text(pro_page())
     (outdir / "method.html").write_text(method_page())
+    (outdir / "listing.html").write_text(listing_page())
     (outdir / "sellers.html").write_text(page("Sellers: x402 Trust Board", body,
                                               "Every seller on the x402 Trust Board, with grades and payout verification."))
     log(f"  Seller pages: {len(index):,}")
