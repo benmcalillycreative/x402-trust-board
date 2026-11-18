@@ -1,0 +1,57 @@
+{
+  "name": "x402-trust-guard",
+  "version": "0.1.0",
+  "description": "Check an x402 seller before your agent pays it: blocks switched or burn wallets, big overcharges and payout addresses the seller never proved. One line on top of @x402/fetch.",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "verdict.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "x402",
+    "agents",
+    "payments",
+    "usdc",
+    "base",
+    "trust",
+    "security",
+    "mpp"
+  ],
+  "license": "MIT",
+  "homepage": "https://benmcalillycreative.github.io/x402-trust-board/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/benmcalillycreative/x402-trust-board.git",
+    "directory": "packages/x402-trust-guard"
+  },
+  "peerDependencies": {
+    "@x402/fetch": ">=2.29.0"
+  },
+  "peerDependenciesMeta": {
+    "@x402/fetch": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/guard.test.mjs"
+  },
+  "devDependencies": {
+    "@x402/evm": "2.29.0",
+    "@x402/fetch": "2.29.0",
+    "viem": "2.58.0"
+  }
+}

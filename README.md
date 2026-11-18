@@ -208,7 +208,11 @@ show no on-chain numbers yet.
 `seller/<host>.json` on the board holds each seller's grade, payout proofs and up to 1,000 endpoint
 records with their flags. The Cloudflare Worker in `worker/` turns that into a paid x402 endpoint,
 `GET /v1/check?url=...&payTo=...` at $0.01, that answers ok / caution / avoid / unknown with reasons.
-See `worker/README.md` to deploy it.
+See `worker/README.md` to deploy it. The same Worker serves a free remote MCP tool at `/mcp`.
+
+`packages/x402-trust-guard/` is a one-line add-on for x402 clients (`withTrustGuard(client)`) that runs that
+check before every payment and refuses red flags. It is MIT-licensed (unlike the rest of this repo) so anyone
+can ship it; publish it with `cd packages/x402-trust-guard && npm publish`.
 
 ## State of agent payments (monthly)
 
