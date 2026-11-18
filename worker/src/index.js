@@ -15,6 +15,7 @@ import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/
 import { parseTarget, verdict } from "./check.js";
 import { signups } from "./signups.js";
 import { mcp } from "./mcp.js";
+import { openapi, wellKnown } from "./openapi.js";
 
 const BASE = "eip155:8453";
 const DEFAULT_PRICE = "$0.01";
@@ -103,6 +104,10 @@ app.get("/", (c) =>
 app.get("/v1/health", (c) => c.json({ ok: true, payTo: c.env.PAY_TO || null }));
 
 app.route("/v1/alerts", signups);
+
+// Discovery documents for directories such as x402scan.
+app.get("/openapi.json", (c) => c.json(openapi(c.env, new URL(c.req.url).origin, priceOf(c.env))));
+app.get("/.well-known/x402", (c) => c.json(wellKnown(new URL(c.req.url).origin)));
 
 // Free MCP tool (capped per IP per day) for agents in Claude, Cursor and other MCP clients.
 app.all("/mcp", (c) => mcp(c, loadSeller));
