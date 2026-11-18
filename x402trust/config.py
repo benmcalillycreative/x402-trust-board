@@ -86,6 +86,9 @@ BASE_RPC_URL = os.environ.get("X402T_BASE_RPC_URL", "https://mainnet.base.org")
 
 # The MPP (Machine Payments Protocol) service directory. Set to "" to turn MPP off.
 MPP_CATALOG_URL = os.environ.get("X402T_MPP_CATALOG_URL", "https://mpp.dev/api/services")
+# Circle's Agent Marketplace lists x402 sellers too, many of them not in the Bazaar. Empty turns it off.
+CIRCLE_CATALOG_URL = os.environ.get(
+    "X402T_CIRCLE_CATALOG_URL", "https://api.circle.com/v2/x402/discovery/resources")
 
 # On-chain payment counting (see chain.py): USDC transfers to sellers' Base addresses.
 # A free public RPC works but is slow; an Alchemy/QuickNode Base URL in X402T_BASE_RPC_URL is faster.

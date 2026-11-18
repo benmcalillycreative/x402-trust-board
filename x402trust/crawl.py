@@ -80,6 +80,7 @@ def upsert(conn, item, ts):
         last_called_at=quality.get("lastCalledAt"),
         catalog_json=db.dumps(item),
         protocol="x402",
+        source="bazaar",  # the Bazaar takes over a listing Circle found first
     )
     if existing:
         cols = ", ".join(f"{k}=:{k}" for k in values if k != "resource")
@@ -130,7 +131,7 @@ def run(conn=None, log=print):
         grace = (datetime.now(timezone.utc) - timedelta(hours=36)).strftime("%Y-%m-%dT%H:%M:%SZ")
         delisted = conn.execute(
             "UPDATE endpoints SET delisted=1 WHERE delisted=0 AND last_seen < ? "
-            "AND COALESCE(protocol, 'x402') = 'x402' "
+            "AND COALESCE(protocol, 'x402') = 'x402' AND COALESCE(source, 'bazaar') = 'bazaar' "
             "AND resource NOT IN (SELECT resource FROM seen)", (grace,)
         ).rowcount
     conn.execute(

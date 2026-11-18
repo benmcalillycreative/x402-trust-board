@@ -92,6 +92,14 @@ def _migrate(conn):
     if "protocol" not in cols:  # v0.7: endpoints from more than one catalog
         conn.execute("ALTER TABLE endpoints ADD COLUMN protocol TEXT DEFAULT 'x402'")
         conn.commit()
+    if "source" not in cols:  # v0.9.4: x402 listings from Circle's marketplace as well as the Bazaar
+        conn.execute("ALTER TABLE endpoints ADD COLUMN source TEXT DEFAULT 'bazaar'")
+        conn.execute("ALTER TABLE endpoints ADD COLUMN circle_seen TEXT")
+        conn.commit()
+    pcols = {r[1] for r in conn.execute("PRAGMA table_info(probes)")}
+    if "quoted_example" not in pcols:  # v0.9.4: the seller marked the quoted offer as an example
+        conn.execute("ALTER TABLE probes ADD COLUMN quoted_example INTEGER")
+        conn.commit()
 
 
 def dumps(value) -> str:

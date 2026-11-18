@@ -137,6 +137,12 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
     summary.append(", ".join(f"{n}×{g}" for g, n in sorted(grades.items(), key=lambda kv: "ABCDF—".find(kv[0] or "—"))))
     if red:
         summary.append(f"{red} with a red flag")
+    from .report import listed_on
+    cats = {c for r in rows for c in listed_on(r)}
+    names_ = [n for k, n in (("bazaar", "Coinbase x402 Bazaar"), ("circle", "Circle Agent Marketplace"),
+                             ("mpp", "MPP directory")) if k in cats]
+    if names_:
+        summary.append("listed on " + " and ".join(names_))
     body.append(f'<div class="card"><h2>Summary</h2><p>{esc(" · ".join(summary))}</p>'
                 f'<p class="muted">Every endpoint is checked a few times a day without paying: does it answer, what '
                 f'does it ask for, and does that match its listing. <a href="../index.html#about">How grading works</a>.</p></div>')

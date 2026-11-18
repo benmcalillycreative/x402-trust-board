@@ -18,6 +18,7 @@ def load(conn):
         """
         SELECT e.resource, e.host, e.service_name, e.description, e.listed_usd, e.network,
                e.pay_to, e.l30_payers, e.l30_calls, e.curated, e.first_seen, e.delisted, e.protocol,
+               e.source, e.circle_seen,
                s.probes, s.uptime, s.p50_latency_ms, s.score, s.grade, s.flags, s.computed_at
         FROM scores s JOIN endpoints e USING (resource)
         ORDER BY s.score DESC, e.l30_payers DESC
@@ -48,11 +49,22 @@ def export_json(rows, path):
                 "flags": r["flags"],
                 "probes": r["probes"],
                 "protocol": r["protocol"] or "x402",
+                "listed_on": listed_on(r),
             }
             for r in rows
         ],
     }
     path.write_text(json.dumps(payload, separators=(",", ":")))
+
+
+def listed_on(r):
+    """Which catalogs list this endpoint: bazaar, circle, mpp."""
+    if (r.get("protocol") or "x402") == "mpp":
+        return ["mpp"]
+    out = [] if r.get("source") == "circle" else ["bazaar"]
+    if r.get("circle_seen"):
+        out.append("circle")
+    return out
 
 
 def esc(v):
@@ -177,6 +189,9 @@ def build_html(rows, crawl, onchain=None):
     grades = Counter(r["grade"] for r in graded)
     red = [r for r in rows if set(r["flags"]) & RED_FLAGS]
     n_mpp = sum(1 for r in rows if r["protocol"] == "mpp")
+    n_circle = sum(1 for r in rows if r.get("source") == "circle")
+    circle_stat = (f'<div class="stat"><b>{n_circle:,}</b><span>only on Circle\'s marketplace</span></div>'
+                   if n_circle else "")
     onchain = onchain or {"hosts": [], "total_usd": 0, "own_share": 0}
     onchain_html = onchain_section(onchain["hosts"], onchain["total_usd"], onchain["own_share"])
     n_verified = len({r["host"] for r in rows if set(r["flags"]) & {"payout_verified", "payout_verified_dns"}})
@@ -246,7 +261,7 @@ def build_html(rows, crawl, onchain=None):
             f'data-search="{esc((name + " " + r["resource"] + " " + (r["description"] or "")).lower())}">'
             f'<td><span class="grade {grade_cls}">{esc(r["grade"])}</span></td>'
             f'<td class="num" data-v="{r["score"]}">{r["score"]}</td>'
-            f'<td class="ep"><div class="name"><a class="seller" href="seller/{esc(r["host"])}.html">{esc(name)}</a>{site_link(r["host"])}{" <span class=cur>curated</span>" if r["curated"] else ""}{" <span class=proto>MPP</span>" if r["protocol"] == "mpp" else ""}</div>'
+            f'<td class="ep"><div class="name"><a class="seller" href="seller/{esc(r["host"])}.html">{esc(name)}</a>{site_link(r["host"])}{" <span class=cur>curated</span>" if r["curated"] else ""}{" <span class=proto>MPP</span>" if r["protocol"] == "mpp" else ""}{" <span class=proto>Circle</span>" if r.get("source") == "circle" else ""}</div>'
             f'<div class="url">{esc(r["resource"])}</div>'
             f'<div class="flags">{flags}</div></td>'
             f'<td class="num" data-v="{r["uptime"] or 0}">{uptime}</td>'
@@ -354,11 +369,12 @@ h2 {{ font-size:17px; margin:30px 0 4px; }}
 </style></head>
 <body><main>
 <h1>x402 Trust Board</h1>
-<p class="sub">Independent checks of the x402 Bazaar catalog and the MPP service directory. Probed without paying. {crawl_line}</p>
+<p class="sub">Independent checks of the x402 Bazaar, Circle's Agent Marketplace and the MPP service directory. Probed without paying. {crawl_line}</p>
 <div class="stats">
   <div class="stat"><b>{total:,}</b><span>endpoints listed</span></div>
   <div class="stat"><b>{n_hosts:,}</b><span>distinct services (hosts)</span></div>
   <div class="stat"><b>{n_mpp:,}</b><span>from the MPP directory</span></div>
+  {circle_stat}
   <div class="stat"><b>{big_share}%</b><span>of listings from one host</span></div>
   <div class="stat"><b>{answered_pct}%</b><span>of checked listings answered</span></div>
   <div class="stat"><b>{top10_calls}%</b><span>of paid calls go to 10 hosts</span></div>
@@ -402,15 +418,15 @@ Red chips are problems an agent would regret paying into; amber chips are warnin
 are information only. Price shown only for dollar-denominated listings. Click a column header to sort.</p>
 <section class="about">
 <h2>How this works</h2>
-<p>Every listing in Coinbase's public x402 Bazaar catalog and in the MPP (Machine Payments Protocol)
-service directory is checked on a rotating schedule,
+<p>Every listing in Coinbase's public x402 Bazaar catalog, Circle's Agent Marketplace and the MPP
+(Machine Payments Protocol) service directory is checked on a rotating schedule,
 about twice a day for most services. Each check asks for the resource <b>without paying</b> and
 records whether the server answered, how fast, and whether the payment terms it quotes match the
 listing: the same network, a wallet the listing (or the same service) names, and a price within
 2× of what's listed. No wallet is involved and nothing is ever paid.</p>
 <p>Scores weigh uptime (50%), speed (15%), whether the payment terms match the listing (20%), and
-paying customers in the last 30 days (15%, from the catalog; the MPP directory doesn't publish usage,
-so for MPP listings that part is left out rather than counted as zero). Grades need at least
+paying customers in the last 30 days (15%, from the catalog; the MPP directory and Circle's marketplace don't
+publish usage, so for their listings that part is left out rather than counted as zero). Grades need at least
 {config.MIN_PROBES_FOR_GRADE} checks in the last {config.SCORE_WINDOW_DAYS} days. Hosts with
 thousands of listings are sampled, so most of their listings stay ungraded. Paid-call counts and
 payer counts are Coinbase's own figures from the catalog.</p>

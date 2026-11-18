@@ -1,7 +1,7 @@
 """Command line: python3 -m x402trust <command>
 
 The cycle
-  crawl     pull the x402 Bazaar catalog and the MPP service directory
+  crawl     pull the x402 Bazaar catalog, Circle's Agent Marketplace and the MPP directory
   probe     check the endpoints that have gone longest without a check (never pays)
   score     compute trust scores from probe history
   report    write the leaderboard HTML + scores.json
@@ -27,7 +27,7 @@ Alerts
 import argparse
 import sys
 
-from . import alerts, chain, config, crawl, crawl_mpp, db, notes, payout, probe, report, score
+from . import alerts, chain, config, crawl, crawl_circle, crawl_mpp, db, notes, payout, probe, report, score
 
 CYCLE = ["crawl", "probe", "payout", "chain", "score", "report", "alerts", "run", "status"]
 MANAGE = ["note", "notes", "unnote", "watch", "unwatch", "watchers", "test-email"]
@@ -124,6 +124,11 @@ def main(argv=None):
                 crawl_mpp.run(conn)
             except Exception as exc:  # one catalog failing shouldn't stop the other
                 print(f"MPP directory crawl failed: {exc}", file=sys.stderr)
+        if config.CIRCLE_CATALOG_URL:
+            try:
+                crawl_circle.run(conn)
+            except Exception as exc:
+                print(f"Circle marketplace crawl failed: {exc}", file=sys.stderr)
     if args.command in ("probe", "run"):
         probe.run(conn, limit=args.limit)
     if args.command == "payout" and args.args:

@@ -34,7 +34,7 @@ FLAG_TEXT = {
     # red
     "wallet_switched": "Payment wallet switched to an address no listing mentions",
     "burn_address": "Asks to be paid to the zero address (funds would be lost)",
-    "example_offer": "Bare URL returns an unpayable example offer (zero address); real offers need order details (owner confirmed)",
+    "example_offer": "Bare URL returns an example offer (zero address) that can't be paid; real offers need order details",
     "overcharge_10x": "Asks over 10× its listed price",
     "private_address": "Points at a private network address",
     "payout_mismatch": "Asks for payment to an address its own site doesn't list",
@@ -185,6 +185,21 @@ BURN_ADDRESSES = {"0x0000000000000000000000000000000000000000",
                   "11111111111111111111111111111111"}
 
 
+def _example(probe):
+    """The seller marked this quoted offer as an example (extra.example), not a real quote."""
+    try:
+        return bool(probe["quoted_example"])
+    except (IndexError, KeyError):
+        return False
+
+
+def _source(ep):
+    try:
+        return ep["source"] or "bazaar"
+    except (IndexError, KeyError):
+        return "bazaar"
+
+
 def _protocol(ep):
     try:
         return ep["protocol"] or "x402"
@@ -199,7 +214,7 @@ def wallet_flags(ep, healthy, ctx):
         return set()
     latest_quote = norm_addr(with_wallet[-1]["quoted_pay_to"])
     if latest_quote in BURN_ADDRESSES:
-        return {"burn_address"}
+        return {"example_offer"} if _example(with_wallet[-1]) else {"burn_address"}
     # The seller's own proof beats anything the listing says (see payout.py).
     declared = getattr(ctx, "payout", {}).get((ep["host"] or "").split(":")[0])
     all_quotes = [norm_addr(p["quoted_pay_to"]) for p in with_wallet]
@@ -229,8 +244,9 @@ def wallet_flags(ep, healthy, ctx):
     quotes = [norm_addr(p["quoted_pay_to"]) for p in with_wallet]
     if not quotes:
         return set()
-    if any(q in BURN_ADDRESSES for q in quotes):
-        return {"burn_address"}
+    burned = [p for p, q in zip(with_wallet, quotes) if q in BURN_ADDRESSES]
+    if burned:
+        return {"example_offer"} if all(_example(p) for p in burned) else {"burn_address"}
     matches = [q in wallets for q in quotes]
     if all(matches):
         return set()
@@ -384,8 +400,9 @@ def score_endpoint(ep, probes, ctx):
             consistency -= penalty
     consistency = max(0.0, consistency)
 
-    if ep["l30_payers"] is None and _protocol(ep) == "mpp":
-        # The MPP directory doesn't publish usage, so leave adoption out instead of scoring it zero.
+    if ep["l30_payers"] is None and (_protocol(ep) == "mpp" or _source(ep) == "circle"):
+        # The MPP directory and Circle's marketplace don't publish usage, so leave adoption out
+        # instead of scoring it zero.
         score = round(100 * (0.50 * uptime + 0.15 * speed + 0.20 * consistency) / 0.85)
     else:
         payers = ep["l30_payers"] or 0

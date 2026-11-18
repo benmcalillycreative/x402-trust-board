@@ -113,6 +113,7 @@ def probe_one(row):
             quoted_network=quoted.get("network"),
             quoted_asset=quoted.get("asset"),
             quoted_pay_to=quoted.get("pay_to"),
+            quoted_example=1 if quoted.get("example") else None,
         )
         if row["pay_to"] and quoted.get("pay_to"):
             result["payto_matches"] = int(norm_addr(row["pay_to"]) == norm_addr(quoted["pay_to"]))
@@ -167,7 +168,7 @@ def _client_tls_problem(exc):
 COLUMNS = (
     "resource", "ts", "outcome", "status_code", "latency_ms", "protocol",
     "quoted_amount", "quoted_usd", "quoted_network", "quoted_asset", "quoted_pay_to",
-    "payto_matches", "price_matches", "error",
+    "payto_matches", "price_matches", "error", "quoted_example",
 )
 
 

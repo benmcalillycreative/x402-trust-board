@@ -1,7 +1,7 @@
 # x402 Trust Board
 
-An independent referee for agent-payable endpoints: everything in Coinbase's x402 Bazaar and in the
-MPP (Machine Payments Protocol) service directory. Every 6 hours it:
+An independent referee for agent-payable endpoints: everything in Coinbase's x402 Bazaar, Circle's
+Agent Marketplace and the MPP (Machine Payments Protocol) service directory. Every 6 hours it:
 
 1. **Crawls** the x402 Bazaar catalog (Coinbase's public discovery API) and records every listed endpoint. This happens once a day; the catalog is 66K+ listings and takes about 10 minutes to pull.
 2. **Probes** the 15,000 endpoints that have gone longest without a check (at most 100 per host), without paying. It asks for the resource, expects an HTTP 402 with payment terms, and records whether it answered, how fast, and whether the terms match the listing. At four cycles a day, real services get about two checks a day.
@@ -87,6 +87,11 @@ python3 -m x402trust unnote api.example.com
 
 **Retired** endpoints stop counting as dead or flaky and show as "Retired by owner." **Intended** drops the price and wallet warnings and shows "Owner confirmed." Notes live in `~/x402-trust-data/owner-notes.json`, so upgrades never touch them.
 
+Sellers don't always need a note. If a bare URL can only return an illustration (it needs order details
+before it can price anything), the seller can mark that offer with `"extra": {"example": true}` in the
+402 requirement. A zero-address quote marked that way shows as "example offer" (information) instead of
+the red burn-address flag.
+
 ## MPP (Machine Payments Protocol)
 
 Once a day, alongside the Bazaar crawl, the board reads the MPP service directory
@@ -106,6 +111,18 @@ Differences from x402, built into the scoring:
 - **Card-only endpoints** (Stripe) have no address at all; they're checked for uptime and price only.
 
 MPP endpoints carry an "MPP" label on the board, and the table can be filtered by protocol.
+
+## Circle Agent Marketplace
+
+Once a day, after the Bazaar and MPP crawls, the board reads Circle's public x402 discovery API
+(`X402T_CIRCLE_CATALOG_URL`, default `https://api.circle.com/v2/x402/discovery/resources`; set it to
+empty to turn it off). Listings are ordinary x402, so they're probed and graded the same way.
+
+- A resource the Bazaar also lists stays a Bazaar row (with Bazaar usage numbers); the board only notes
+  that Circle lists it too (`listed_on` in scores.json).
+- A resource only Circle lists gets a "Circle" label. Circle doesn't publish usage, so, as with MPP, the
+  customers part of the score is left out rather than counted as zero.
+- Only the Circle crawl can delist a Circle-only row, after the same 36-hour grace period.
 
 ## Verified payout addresses
 
@@ -246,6 +263,7 @@ x402trust/netguard.py private-address blocking
 x402trust/score.py    trust scores and flags (tune the weights here)
 x402trust/report.py   leaderboard HTML + scores.json
 x402trust/crawl_mpp.py MPP directory crawler
+x402trust/crawl_circle.py Circle Agent Marketplace crawler
 x402trust/payout.py   verified payout addresses (DNS, site file, wallet signature)
 x402trust/chain.py    real USDC payments on Base, counted from the chain
 update.sh             self-update from GitHub (kept only if tests pass)

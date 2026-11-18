@@ -101,7 +101,19 @@ def requirement_fields(req):
         "asset": asset,
         "pay_to": req.get("payTo"),
         "scheme": req.get("scheme"),
+        "example": is_example(req),
     }
+
+
+def is_example(req):
+    """True when the seller marks an offer as an illustration rather than a payable quote,
+    e.g. a bare URL that can't price anything until it gets order details. Sellers do this
+    with extra.example (or isExample) set to true."""
+    extra = req.get("extra") if isinstance(req.get("extra"), dict) else {}
+    for v in (extra.get("example"), extra.get("isExample"), req.get("example")):
+        if v is True or (isinstance(v, str) and v.lower() == "true"):
+            return True
+    return False
 
 
 def decode_header(value):
