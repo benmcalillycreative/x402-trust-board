@@ -96,7 +96,11 @@ function cors(c, res) {
 const CDP = (env) => (env.CDP_PUBLIC_API || "https://api.cdp.coinbase.com/platform").replace(/\/+$/, "");
 
 async function fetchJson(url, init, ms = 15000) {
-  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+  let res = await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+  if (res.status === 429) { // Coinbase rate-limits now and then: one polite retry
+    await new Promise((r) => setTimeout(r, 2000));
+    res = await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+  }
   const text = await res.text();
   let body = null;
   try { body = JSON.parse(text); } catch {}

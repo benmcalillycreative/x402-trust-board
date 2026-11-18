@@ -189,7 +189,9 @@ export function analyze({ target, validate, merchant, seller, validateError, mer
   // Being unlisted is the outcome, not one of the causes: count only the things that block a listing.
   const failed = findings.filter((f) => f.status === "fail" && f.title !== "Not listed in the Bazaar yet").length;
   const listed = Boolean(index && index.active);
-  const summary = listed
+  const summary = !validate
+    ? "Couldn't run Coinbase's checks just now (its validator didn't answer). Try again in a minute."
+    : listed
     ? (failed ? "Listed, with problems to fix." : "Listed in the Bazaar, and nothing blocking it.")
     : (failed ? `Not listed: ${failed} thing${failed === 1 ? "" : "s"} to fix first.` : "Not listed yet: it passes the checks, so it needs a settled payment through the CDP facilitator.");
   return { listed, payTo: payTo || null, summary, findings, board };

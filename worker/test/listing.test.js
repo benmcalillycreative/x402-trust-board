@@ -79,6 +79,7 @@ test("validator down: no crash, no false verdict", () => {
   const out = analyze({ target: T("https://api.example.com/x"), validate: null, validateError: "timeout", merchant: null, seller: undefined });
   assert.equal(out.listed, false);
   assert.ok(out.findings.some((x) => x.title === "Coinbase's validator didn't answer"));
+  assert.match(out.summary, /Try again in a minute/);
 });
 
 test("real validator output: a 404 groups into one fix, the rest are 'skipped'", () => {
