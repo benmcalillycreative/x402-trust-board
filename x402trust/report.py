@@ -154,7 +154,7 @@ def onchain_by_host(conn):
         own = sum(g["payments"] * g["own_share"] for g in got)
         out.append({"host": host, "payments": payments, "payers": sum(g["payers"] for g in got),
                     "usd": round(sum(g["usd"] for g in got), 2), "own_share": own / payments if payments else 0,
-                    "catalog_calls": calls.get(host, 0)})
+                    "catalog_calls": calls.get(host, 0), "addresses": sorted(aset)})
     return sorted(out, key=lambda r: -r["usd"])
 
 

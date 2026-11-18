@@ -64,13 +64,26 @@ def collect(conn, now=None):
         pass
 
     try:
+        from . import chain
         chain_hosts = report.onchain_by_host(conn)
+        sums = chain.summaries(conn)
     except Exception:
-        chain_hosts = []
-    usd = sum(h["usd"] for h in chain_hosts)
-    payments = sum(h["payments"] for h in chain_hosts)
-    self_paid = sum(h["payments"] * h["own_share"] for h in chain_hosts)
-    cat_calls_counted = sum(h["catalog_calls"] for h in chain_hosts)
+        chain_hosts, sums = [], {}
+    # Several hosts can share one wallet (a custom domain and its platform URL, say). Count each
+    # address once for the totals, and show hosts with the same wallets as one row.
+    addrs = {a for h in chain_hosts for a in h.get("addresses", [])}
+    usd = sum(sums[a]["usd"] for a in addrs if a in sums)
+    payments = sum(sums[a]["payments"] for a in addrs if a in sums)
+    self_paid = sum(sums[a]["payments"] * sums[a]["own_share"] for a in addrs if a in sums)
+    groups = {}
+    for h in chain_hosts:
+        key = tuple(h.get("addresses") or [h["host"]])
+        g = groups.setdefault(key, {"hosts": [], "usd": h["usd"], "payments": h["payments"],
+                                    "payers": h["payers"], "catalog_calls": 0})
+        g["hosts"].append(h["host"])
+        g["catalog_calls"] += h["catalog_calls"]
+    services = sorted(groups.values(), key=lambda g: -g["usd"])
+    cat_calls_counted = sum(g["catalog_calls"] for g in services)
 
     return {
         "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -109,12 +122,13 @@ def collect(conn, now=None):
         "payout_proofs": {"hosts": sum(levels.values()), "by_level": dict(levels)},
         "onchain": {
             "hosts_counted": len(chain_hosts),
+            "services_counted": len(services),
             "usdc": round(usd, 2),
             "payments": payments,
             "self_paid_pct": _pct(self_paid, payments),
             "catalog_calls_for_same_hosts": cat_calls_counted,
-            "top": [{"host": h["host"], "usd": h["usd"], "payments": h["payments"], "payers": h["payers"]}
-                    for h in chain_hosts[:10]],
+            "top": [{"host": " + ".join(sorted(g["hosts"])[:3]) + (" + more" if len(g["hosts"]) > 3 else ""),
+                     "usd": g["usd"], "payments": g["payments"], "payers": g["payers"]} for g in services[:10]],
         },
     }
 
@@ -177,7 +191,7 @@ def markdown(s, label, prev=None):
     lines += ["", "## Real money on Base", ""]
     if o["hosts_counted"]:
         lines += [
-            f"For the {o['hosts_counted']:,} services whose payout wallets the board has fully counted: "
+            f"For the {o.get('services_counted', o['hosts_counted']):,} services whose payout wallets the board has fully counted: "
             f"**${o['usdc']:,.2f} USDC in {o['payments']:,} payments**{_delta(s, prev, ['onchain', 'usdc'])}. "
             f"**{o['self_paid_pct']}% of those payments came from the seller's own wallets.** "
             f"For the same services the catalog reports {o['catalog_calls_for_same_hosts']:,} paid calls.",
