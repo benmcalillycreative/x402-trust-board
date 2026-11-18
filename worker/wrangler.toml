@@ -5,6 +5,9 @@ compatibility_flags = ["nodejs_compat"]
 
 # The public address (added to benmcalilly.com's zone). workers.dev stays on as well.
 routes = [{ pattern = "check.benmcalilly.com", custom_domain = true }]
+# Keep the old address answering: x402scan, the Bazaar and the first payment all used it.
+workers_dev = true
+preview_urls = false
 
 [vars]
 BOARD_URL = "https://benmcalillycreative.github.io/x402-trust-board/"
