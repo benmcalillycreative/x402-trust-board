@@ -14,9 +14,8 @@ workers_dev = true
 preview_urls = false
 
 [vars]
-# The board is served at https://settlewatch.com/; the github.io address redirects there and keeps working
-# while GitHub issues the settlewatch.com certificate, so the Worker reads it from github.io.
-BOARD_URL = "https://benmcalillycreative.github.io/x402-trust-board/"
+# The board (GitHub Pages, HTTPS enforced). The old github.io address redirects here.
+BOARD_URL = "https://settlewatch.com/"
 # Price per check, in USD (paid in USDC on Base). Change it and run `npx wrangler deploy`.
 PRICE = "$0.01"
 
