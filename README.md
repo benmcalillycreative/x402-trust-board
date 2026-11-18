@@ -207,7 +207,7 @@ show no on-chain numbers yet.
 
 `seller/<host>.json` on the board holds each seller's grade, payout proofs and up to 1,000 endpoint
 records with their flags. The Cloudflare Worker in `worker/` turns that into a paid x402 endpoint,
-`GET /v1/check?url=...&payTo=...` at $0.001, that answers ok / caution / avoid / unknown with reasons.
+`GET /v1/check?url=...&payTo=...` at $0.01, that answers ok / caution / avoid / unknown with reasons.
 See `worker/README.md` to deploy it.
 
 ## State of agent payments (monthly)
@@ -306,5 +306,3 @@ Everything is stored in one SQLite file, `~/x402-trust-data/trust.db`. Raw catal
 ## What's next
 
 - **Paid test calls** on a small rotating sample, with a capped budget. These check that the endpoint delivers what it promises after you pay. That's the signal nobody else has.
-- **Sell the checks over x402**: a `$0.001` "should I pay this endpoint?" lookup that serves straight from `trust.db`.
-- **A public leaderboard**: publish `leaderboard.html` so you become the reference people cite.

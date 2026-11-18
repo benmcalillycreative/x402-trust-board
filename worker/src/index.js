@@ -2,7 +2,7 @@
 //
 //   GET /v1/check?url=<the URL you're about to pay>[&payTo=<the address its 402 asks for>]
 //
-// Costs $0.001 USDC on Base, paid with x402 (settled through Coinbase's CDP facilitator).
+// Costs PRICE (wrangler.toml) in USDC on Base, paid with x402 (settled through Coinbase's CDP facilitator).
 // Returns ok / caution / avoid / unknown with the reasons, from the board's latest checks.
 // Free: GET / (how to use it) and GET /v1/health.
 
@@ -14,9 +14,11 @@ import { createFacilitatorConfig } from "@coinbase/x402";
 import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import { parseTarget, verdict } from "./check.js";
 import { signups } from "./signups.js";
+import { mcp } from "./mcp.js";
 
 const BASE = "eip155:8453";
-const PRICE = "$0.001";
+const DEFAULT_PRICE = "$0.01";
+const priceOf = (env) => (/^\$\d+(\.\d+)?$/.test(env.PRICE || "") ? env.PRICE : DEFAULT_PRICE);
 
 const EXAMPLE = {
   url: "https://api.example.com/v1/quote",
@@ -31,7 +33,7 @@ const EXAMPLE = {
 function routes(env) {
   return {
     "GET /v1/check": {
-      accepts: { scheme: "exact", price: PRICE, network: BASE, payTo: env.PAY_TO, maxTimeoutSeconds: 60 },
+      accepts: { scheme: "exact", price: priceOf(env), network: BASE, payTo: env.PAY_TO, maxTimeoutSeconds: 60 },
       description:
         "Check an x402 or MPP endpoint before paying it: uptime, payment-term red flags (switched or " +
         "burn wallets, overcharges) and whether the payout address is proven by the seller. Returns " +
@@ -53,7 +55,7 @@ function routes(env) {
       }),
       unpaidResponseBody: () => ({
         contentType: "application/json",
-        body: { error: "Payment required: $0.001 USDC on Base via x402.", docs: env.PUBLIC_URL || "/" },
+        body: { error: `Payment required: ${priceOf(env)} USDC on Base via x402.`, docs: "/" },
       }),
     },
   };
@@ -89,16 +91,20 @@ app.get("/", (c) =>
     name: "x402 Trust Board check API",
     what: "Ask before you pay: is this x402/MPP endpoint up, are its payment terms what it listed, and is the address it wants paid one the seller has proven?",
     call: "GET /v1/check?url=<paid URL>&payTo=<address from its 402, optional>",
-    price: "$0.001 USDC on Base (x402 v2, exact scheme)",
+    price: `${priceOf(c.env)} USDC on Base (x402 v2, exact scheme)`,
     verdicts: { ok: "fine to pay", caution: "works but has warnings or little history", avoid: "red flag", unknown: "never seen" },
     board: c.env.BOARD_URL,
     data: "Free bulk data: scores.json, payouts.json and seller/<host>.json on the board",
+    mcp: "Remote MCP server at /mcp (tool: check_payment), free up to 100 checks a day",
   })
 );
 
 app.get("/v1/health", (c) => c.json({ ok: true, payTo: c.env.PAY_TO || null }));
 
 app.route("/v1/alerts", signups);
+
+// Free MCP tool (capped per IP per day) for agents in Claude, Cursor and other MCP clients.
+app.all("/mcp", (c) => mcp(c, loadSeller));
 
 // Reject bad input before the paywall, so nobody pays for a typo.
 app.use("/v1/check", async (c, next) => {

@@ -2,7 +2,7 @@
 
 A Cloudflare Worker that answers one question for an agent about to pay an x402 or MPP endpoint:
 **should I?** It reads the board's latest checks (`seller/<host>.json`, published with the board)
-and charges $0.001 USDC on Base per answer, paid with x402 and settled through Coinbase's CDP
+and charges $0.01 USDC on Base per answer (the `PRICE` setting in wrangler.toml), paid with x402 and settled through Coinbase's CDP
 facilitator. Bad input is refused before the paywall, and nothing is charged if the board can't be read.
 
 ```
@@ -25,7 +25,7 @@ GET /v1/check?url=<the URL you're about to pay>&payTo=<the address its 402 asks 
 - **ok**: graded A or B with matching terms.
 - **unknown**: the seller isn't in any catalog the board reads.
 
-Free: `GET /` (description) and `GET /v1/health`. The same data is free in bulk on the board
+Free: `GET /` (description), `GET /v1/health`, and a remote MCP server at `/mcp` (tool `check_payment`, 100 checks a day per IP) for agents in Claude, Cursor and other MCP clients. The same data is free in bulk on the board
 (`scores.json`, `payouts.json`, `seller/<host>.json`); the API is for agents that want one answer,
 pay-per-call, without downloading anything.
 
@@ -41,7 +41,7 @@ npx wrangler secret put CDP_API_KEY_SECRET
 npx wrangler deploy
 ```
 
-The first 1,000 settlements a month through the CDP facilitator are free. After the first paid call
+The first 1,000 settlements a month through the CDP facilitator are free; after that Coinbase charges $0.001 each, which is why the price is $0.01 rather than $0.001. After the first paid call
 settles, the facilitator lists the endpoint in the x402 Bazaar using the discovery metadata the Worker
 declares.
 

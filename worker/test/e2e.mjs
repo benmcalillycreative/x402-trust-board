@@ -38,7 +38,7 @@ const PORT = 8799;
 const W = `http://127.0.0.1:${PORT}`;
 
 const dev = spawn("npx", ["wrangler", "dev", "--port", String(PORT), "--ip", "127.0.0.1",
-  "--var", `ALERTS_TOKEN:t0ken`, "--var", `BOARD_URL:${F}/`, "--var", `FACILITATOR_URL:${F}/fac`, "--var", `PAY_TO:${PAY_TO}`],
+  "--var", `ALERTS_TOKEN:t0ken`, "--var", "PRICE:$0.01", "--var", `BOARD_URL:${F}/`, "--var", `FACILITATOR_URL:${F}/fac`, "--var", `PAY_TO:${PAY_TO}`],
   { env: { ...process.env, NO_PROXY: "127.0.0.1,localhost", no_proxy: "127.0.0.1,localhost" }, stdio: ["ignore", "pipe", "pipe"], detached: true });
 let log = "";
 dev.stdout.on("data", (d) => (log += d));
@@ -61,7 +61,7 @@ try {
   assert.equal(unpaid.status, 402);
   const pr = JSON.parse(Buffer.from(unpaid.headers.get("payment-required"), "base64").toString());
   assert.equal(pr.x402Version, 2);
-  assert.equal(pr.accepts[0].amount, "1000");
+  assert.equal(pr.accepts[0].amount, "10000", "PRICE var sets the price");
   assert.equal(pr.accepts[0].payTo.toLowerCase(), PAY_TO);
   assert.equal(pr.accepts[0].network, "eip155:8453");
   assert.ok(pr.extensions?.bazaar, "bazaar discovery metadata is declared");
@@ -106,6 +106,18 @@ try {
   q = (await (await fetch(`${W}/v1/alerts/queue`, { headers: H })).json()).items;
   assert.deepEqual(q.map((i) => [i.kind, i.match]), [["stop", "api.example.com"]]);
   console.log("sign-ups OK");
+
+  // MCP: initialize, list, call (free, no payment).
+  const call = (body) => fetch(`${W}/mcp`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify(body) }).then((r) => r.json());
+  const init = await call({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } } });
+  assert.equal(init.result.protocolVersion, "2025-06-18");
+  assert.equal((await fetch(`${W}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) })).status, 202);
+  const tools = await call({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+  assert.equal(tools.result.tools[0].name, "check_payment");
+  const res = await call({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "check_payment", arguments: { url: "https://api.example.com/x", payTo: A } } });
+  assert.equal(res.result.structuredContent.verdict, "ok");
+  assert.match(res.result.content[0].text, /^OK:/);
+  console.log("mcp OK");
   console.log("e2e passed");
   done(0);
 } catch (e) {

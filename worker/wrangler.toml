@@ -5,6 +5,8 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 BOARD_URL = "https://benmcalillycreative.github.io/x402-trust-board/"
+# Price per check, in USD (paid in USDC on Base). Change it and run `npx wrangler deploy`.
+PRICE = "$0.01"
 
 # Set these with `npx wrangler secret put NAME` (never in this file):
 #   PAY_TO              your Base address that receives the $0.001 payments
