@@ -96,7 +96,7 @@ text-align:left;vertical-align:top;font-size:14px}th{font-size:12px;text-transfo
 .chip.good{background:var(--goodbg);color:var(--good)}code{font-size:12px;word-break:break-all}
 .g{font-weight:700}.muted{color:var(--muted)}textarea{width:100%;font:12px ui-monospace,monospace;padding:8px;
 border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
-form.alert{display:flex;gap:8px;flex-wrap:wrap}form.alert input[type=email]{flex:1 1 220px;padding:8px 10px;
+form.alert{display:flex;gap:8px;flex-wrap:wrap}form.alert input[type=email],form.alert input[type=text],form.alert textarea{flex:1 1 220px;padding:8px 10px;
 border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
 form.alert button{padding:8px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
 .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
@@ -194,6 +194,8 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
     url = f"{BOARD}seller/{host}.html"
     snippet = (f'<a href="{url}"><img src="{BOARD}badge/{host}.svg" '
                f'alt="x402 Trust Board: {grade or "not graded"}{", payout verified" if verified else ""}"></a>')
+    body.append('<p class="muted">Run this service? <a href="../pro.html">See what sellers get</a>, '
+                'including checks on every endpoint.</p>')
     body.append(f'<div class="card"><h2>Badge for your site</h2><p><img src="../badge/{esc(host)}.svg" alt=""></p>'
                 f'<p class="muted">It updates with every board refresh. Paste this where you want it:</p>'
                 f'<textarea rows="3" readonly onclick="this.select()">{esc(snippet)}</textarea></div>')
@@ -250,6 +252,39 @@ def seller_json(host, rows, proofs, name, onchain=None):
     }
 
 
+def pro_page():
+    """The seller plan: what sellers get, and a form to ask for early access."""
+    form = (
+        f'<form class="alert" method="post" action="{esc(config.API_URL)}/v1/alerts/pro" style="flex-direction:column;align-items:stretch">'
+        f'<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'
+        f'<input type="email" name="email" required placeholder="you@example.com" aria-label="Email">'
+        f'<input type="text" name="host" placeholder="Your service, e.g. api.example.com" aria-label="Your service" '
+        f'inputmode="url" pattern="[A-Za-z0-9.:/-]+">'
+        f'<textarea name="note" rows="3" placeholder="Anything we should know (optional)" aria-label="Note"></textarea>'
+        f'<button type="submit">Ask for early access</button></form>'
+    ) if config.API_URL else '<p>Reply to any board email, or open an issue on the board\'s GitHub, and say which service you run.</p>'
+    body = (
+        '<p class="muted"><a href="index.html">x402 Trust Board</a> / For sellers</p>'
+        '<h1>For sellers</h1>'
+        '<p class="sub">Agents increasingly check the board before they pay. Make sure what they see about you is right, '
+        'and find out the moment something breaks.</p>'
+        '<div class="card"><h2>Free, for everyone</h2><ul>'
+        '<li>Your grade, endpoints and payout proofs on your own <a href="sellers.html">seller page</a>, with a badge for your site</li>'
+        '<li><a href="verify.html">Payout verification</a>: a DNS record and one signature, and agents can tell your wallet from a hijacker\'s</li>'
+        '<li>Alerts when your endpoints stop answering or change price or wallet</li></ul></div>'
+        '<div class="card"><h2>Pro (early access)</h2><ul>'
+        '<li>Every one of your endpoints checked every cycle, not on the rotating sample, so your grade reflects all of them</li>'
+        '<li>Alerts on all your endpoints to everyone on your team</li>'
+        '<li>Hands-on help setting up a signed payout proof</li>'
+        '<li>A monthly report on your service: uptime, failed checks, what agents saw, and the payments counted on chain</li>'
+        '</ul><p class="muted">Pricing is being set with the first sellers. <b>Grades are never for sale:</b> Pro doesn\'t '
+        'change how you are graded, only how often and how closely you are watched.</p>'
+        f'{form}</div>'
+    )
+    return page("For sellers: x402 Trust Board", body,
+                "What sellers of agent-payable APIs get from the x402 Trust Board, free and Pro.")
+
+
 def build(conn, rows, outdir, onchain_hosts=None, log=print):
     """Write seller/, badge/ and sellers.html under outdir. Returns the number of pages."""
     from .report import website
@@ -286,9 +321,10 @@ def build(conn, rows, outdir, onchain_hosts=None, log=print):
         f'<td class="g" style="color:{GRADE_COLOR.get(g, "inherit")}">{esc(g or "—")}</td><td>{c}</td>'
         f'<td>{"✓" if v else ""}</td></tr>' for n, s, g, v, c in index)
     body = (f'<p class="muted"><a href="index.html">x402 Trust Board</a></p><h1>Sellers</h1>'
-            f'<p class="sub">{len(index):,} sellers with endpoints listed in the x402 Bazaar, Circle\'s Agent Marketplace or the MPP directory.</p>'
+            f'<p class="sub">Run one of these? <a href="pro.html">What sellers get</a>. {len(index):,} sellers with endpoints listed in the x402 Bazaar, Circle\'s Agent Marketplace or the MPP directory.</p>'
             f'<div class="card wrap"><table><thead><tr><th>Seller</th><th>Grade</th><th>Endpoints</th>'
             f'<th>Payout verified</th></tr></thead><tbody>{lis}</tbody></table></div>')
+    (outdir / "pro.html").write_text(pro_page())
     (outdir / "sellers.html").write_text(page("Sellers: x402 Trust Board", body,
                                               "Every seller on the x402 Trust Board, with grades and payout verification."))
     log(f"  Seller pages: {len(index):,}")

@@ -105,6 +105,12 @@ try {
   assert.equal((await fetch(`${W}/v1/alerts/stop?e=pat%40example.com&m=api.example.com&s=${sig}`)).status, 200);
   q = (await (await fetch(`${W}/v1/alerts/queue`, { headers: H })).json()).items;
   assert.deepEqual(q.map((i) => [i.kind, i.match]), [["stop", "api.example.com"]]);
+  const pro = await fetch(`${W}/v1/alerts/pro`, { method: "POST", body: new URLSearchParams({ email: "dev@seller.example", host: "https://api.seller.example/x", note: "hi" }) });
+  assert.equal(pro.status, 200);
+  q = (await (await fetch(`${W}/v1/alerts/queue`, { headers: H })).json()).items;
+  const lead = q.find((i) => i.kind === "interest");
+  assert.equal(lead.host, "api.seller.example");
+  await fetch(`${W}/v1/alerts/ack`, { method: "POST", headers: H, body: JSON.stringify({ key: lead.key, state: "done" }) });
   console.log("sign-ups OK");
 
   // MCP: initialize, list, call (free, no payment).

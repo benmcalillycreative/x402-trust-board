@@ -162,6 +162,7 @@ class OnChain(unittest.TestCase):
         self.assertGreater(sj["onchain"]["payments"], 0)
         self.assertTrue(all({"code", "severity", "text"} <= set(f) for f in sj["endpoints"][0]["flags"]))
         self.assertIn('href="seller/host-a.example.html"', (config.REPORT_DIR / "sellers.html").read_text())
+        self.assertIn("Grades are never for sale", (config.REPORT_DIR / "pro.html").read_text())
         data = json.loads((config.REPORT_DIR / "onchain.json").read_text())
         self.assertEqual({h["host"] for h in data["hosts"]}, {"host-a.example", "host-b.example", "host-c.example"})
 

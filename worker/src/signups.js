@@ -5,6 +5,7 @@
 // mail ever sent comes from the same address as the alerts themselves.
 //
 //   POST /v1/alerts/subscribe   form: email, host           (public)
+//   POST /v1/alerts/pro         form: email, host, note     (public: interest in the seller plan)
 //   GET  /v1/alerts/confirm?t=  link in the confirmation     (public)
 //   GET  /v1/alerts/stop?e=&m=&s=  one-click unsubscribe     (public, HMAC-signed by the board)
 //   GET  /v1/alerts/queue       pending work for the board   (Bearer ALERTS_TOKEN)
@@ -79,6 +80,27 @@ signups.post("/subscribe", async (c) => {
     `(the board runs every six). Click it and monitoring starts. Nothing happens if you don't.`);
 });
 
+signups.post("/pro", async (c) => {
+  const form = await c.req.parseBody().catch(() => ({}));
+  const email = String(form.email || "").trim().toLowerCase();
+  const host = String(form.host || "").trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0];
+  const note = String(form.note || "").trim().slice(0, 1000);
+  const board = c.env.BOARD_URL;
+  const reply = (code, title, msg) => c.html(page(title, msg, board), code);
+  if (form.website) return reply(200, "Thanks", "We'll be in touch.");
+  if (!EMAIL.test(email) || email.length > 254) return reply(400, "That email doesn't look right", "Go back and check it.");
+  if (host && !HOST.test(host)) return reply(400, "That service address doesn't look right", "Use its domain, like api.example.com.");
+  const ip = c.req.header("cf-connecting-ip") || "unknown";
+  if (!(await bump(c.env.SIGNUPS, `rl:pro:${ip}:${Math.floor(Date.now() / 3600e3)}`, 3600, 5))) {
+    return reply(429, "Too many requests", "Try again later.");
+  }
+  const token = crypto.randomUUID().replace(/-/g, "");
+  await c.env.SIGNUPS.put(`i:${token}`, JSON.stringify({ email, host, note, ts: new Date().toISOString(), state: "new" }), {
+    expirationTtl: 30 * DAY,
+  });
+  return reply(200, "Thanks", `We'll email <b>${esc(email)}</b> about early access${host ? ` for <b>${esc(host)}</b>` : ""}.`);
+});
+
 signups.get("/confirm", async (c) => {
   const t = (c.req.query("t") || "").replace(/[^a-f0-9]/g, "");
   const board = c.env.BOARD_URL;
@@ -109,13 +131,13 @@ signups.get("/stop", async (c) => {
 signups.get("/queue", async (c) => {
   if (!authed(c)) return c.json({ error: "unauthorized" }, 401);
   const out = [];
-  for (const prefix of ["p:", "s:"]) {
+  for (const prefix of ["p:", "s:", "i:"]) {
     let cursor;
     do {
       const page_ = await c.env.SIGNUPS.list({ prefix, cursor });
       for (const k of page_.keys) {
         const v = await c.env.SIGNUPS.get(k.name);
-        if (v) out.push({ key: k.name, ...JSON.parse(v), kind: prefix === "p:" ? "signup" : "stop" });
+        if (v) out.push({ key: k.name, ...JSON.parse(v), kind: { "p:": "signup", "s:": "stop", "i:": "interest" }[prefix] });
       }
       cursor = page_.list_complete ? null : page_.cursor;
     } while (cursor);
@@ -126,7 +148,7 @@ signups.get("/queue", async (c) => {
 signups.post("/ack", async (c) => {
   if (!authed(c)) return c.json({ error: "unauthorized" }, 401);
   const { key, state } = await c.req.json().catch(() => ({}));
-  if (!/^[ps]:[a-f0-9]{16,64}$/.test(key || "")) return c.json({ error: "bad key" }, 400);
+  if (!/^[psi]:[a-f0-9]{16,64}$/.test(key || "")) return c.json({ error: "bad key" }, 400);
   if (state === "done") {
     await c.env.SIGNUPS.delete(key);
   } else if (state === "mailed") {

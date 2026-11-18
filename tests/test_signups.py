@@ -74,6 +74,19 @@ class Signups(unittest.TestCase):
         mail = next((config.DATA_DIR / "outbox").iterdir()).read_text()
         self.assertIn("/v1/alerts/confirm?t=" + "c" * 32, mail)
 
+    def test_seller_plan_lead_is_forwarded_only_when_sent(self):
+        saved, config.ALERT_FROM = config.ALERT_FROM, "owner@example.com"
+        try:
+            QUEUE["items"] = [{"key": "i:" + "d" * 32, "kind": "interest", "state": "new", "email": "dev@seller.example",
+                               "host": "api.seller.example", "note": "Interested", "ts": "2026-11-18T00:00:00Z"}]
+            out = signups.run(log=lambda *_: None)
+            self.assertEqual(out["leads"], 0)            # SMTP isn't set up here: saved to outbox, kept queued
+            self.assertEqual(ACKS, [])
+            mails = [m.read_text() for m in (config.DATA_DIR / "outbox").iterdir()]
+            self.assertTrue(any("Seller plan interest: api.seller.example" in m for m in mails))
+        finally:
+            config.ALERT_FROM = saved
+
     def test_stop_link_is_signed(self):
         link = signups.stop_link("Pat@Example.com", "api.seller.example")
         self.assertIn("e=pat%40example.com", link)
