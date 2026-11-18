@@ -55,7 +55,7 @@ Run it on a machine that stays on. Uptime numbers are only as good as how often 
 What the first week of real data taught, now built in:
 
 - **Fresh payment addresses are normal.** Many honest services (Browserbase, Tavily and others) generate a new address for every payment, or pay into another wallet the same service lists. Neither is penalized.
-- **Prices often depend on the request.** Cheaper than listed, or up to 2×, is information only. **2–10×** is a warning. **Over 10×** is a red flag.
+- **Prices often depend on the request.** Cheaper than listed, or up to 2×, is information only. **2–10×** and **over 10×** are warnings (a stale listing explains a big gap as often as a bad seller does, and the payer sees the real price before signing). Red flags are kept for money going somewhere it shouldn't.
 - **The real hijack signature** is a wallet that *used to* match the listing and then switched to an address no listing anywhere mentions. That's an automatic F, capped at 30.
 
 Caps, because good uptime shouldn't hide terms an agent would regret paying:

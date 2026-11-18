@@ -16,7 +16,7 @@ const HOST = "seller.example";
 let server, base, paid = [], checks = 0;
 
 const SELLER = {
-  host: HOST, name: "Seller", grade: "A", generated_at: "2026-11-18T00:00:00Z",
+  host: HOST, name: "Seller", grade: "A", generated_at: new Date().toISOString(),
   payout: { verified: true, proofs: [{ address: GOOD, level: "dns_signed" }] },
   endpoints: [
     { resource: "https://seller.example/good", grade: "A", score: 95, listed_pay_to: GOOD, flags: [] },

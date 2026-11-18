@@ -334,10 +334,12 @@ class EndToEnd(unittest.TestCase):
             config.REPORT_MAX_ROWS = old
         main_table = html_text.split('id="t"')[1].split("</table>")[0]
         red_table = html_text.split('id="rt"')[1].split("</table>")[0]
-        # The cap trims mild problems, never red flags: all three stay in both tables.
-        for name in ("/switch", "/burn", "/pricey"):
+        # The cap trims mild problems, never red flags: both stay in both tables.
+        for name in ("/switch", "/burn"):
             self.assertIn(name, main_table)
             self.assertIn(name, red_table)
+        # A 10x overcharge is a warning (a stale listing explains it as often as a bad seller), not red.
+        self.assertNotIn("/pricey", red_table)
         self.assertNotIn("/hijacked", main_table, "a warning is trimmed before any red flag")
         self.assertIn("Weather Pro", main_table)
         self.assertIn('href="#red"', html_text)

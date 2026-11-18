@@ -5,7 +5,7 @@ import { parseTarget, verdict } from "../src/check.js";
 const A = "0x" + "a1".repeat(20);
 const B = "0x" + "b2".repeat(20);
 const seller = (eps, proofs = []) => ({
-  host: "api.example.com", name: "Example", grade: "B", generated_at: "2026-11-18T00:00:00Z",
+  host: "api.example.com", name: "Example", grade: "B", generated_at: new Date().toISOString(),
   payout: { verified: proofs.some((p) => p.level === "dns_signed"), proofs },
   endpoints: eps,
 });
@@ -56,4 +56,13 @@ test("warnings, low grades and ungraded mean caution", () => {
   // URL not on file: falls back to the seller's grade but says so
   const v = verdict(T("https://api.example.com/other"), seller([ep("https://api.example.com/x", "A")]), null, "b");
   assert.equal(v.endpoint, null);
+});
+
+test("stale data never says ok", () => {
+  const s = seller([ep("https://api.example.com/x", "A")]);
+  s.generated_at = new Date(Date.now() - 30 * 36e5).toISOString();
+  const v = verdict(T("https://api.example.com/x"), s, null, "b");
+  assert.equal(v.verdict, "caution");
+  assert.equal(v.data_age_hours, 30);
+  assert.match(v.reasons.join(" "), /30 hours old/);
 });

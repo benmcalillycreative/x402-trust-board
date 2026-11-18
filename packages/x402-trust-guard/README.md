@@ -18,8 +18,10 @@ Before your client signs a payment, the guard asks the [x402 Trust Board](https:
 about the endpoint and the address it wants paid, and **stops the payment** when the answer is `avoid`:
 
 - the endpoint switched to a different wallet, or asks to be paid at a burn address
-- it charges 10× or more what its listing says
 - the address isn't in the payout proof the seller published (a hijacked server can change where money goes; it can't change the seller's DNS)
+
+Price problems (asking well above the listing), flaky uptime, low grades and thin history come back as `caution`,
+which you can choose to block too (`onCaution: "block"`).
 
 The board checks every listing in Coinbase's x402 Bazaar, Circle's Agent Marketplace and the MPP directory several times a day,
 without paying, and counts real payments on Base and Solana.

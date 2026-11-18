@@ -72,9 +72,12 @@ FLAG_TEXT = {
     "testnet": "Test network only (not real money)",
     "no_payers": "No paying customers in 30 days",
 }
-RED_FLAGS = {"wallet_switched", "burn_address", "overcharge_10x", "private_address", "payout_mismatch"}
+# Red = a confirmed danger to the payer's money: it would go somewhere it shouldn't. A price far above the
+# listing is a warning, not red: a stale listing explains it as often as a bad seller does, and the
+# payer sees the real price in the 402 before signing.
+RED_FLAGS = {"wallet_switched", "burn_address", "private_address", "payout_mismatch"}
 GOOD_FLAGS = {"payout_verified_dns", "payout_verified"}
-WARN_FLAGS = {"overcharge_2x", "unlisted_wallet", "payout_changed", "self_paid", "shared_wallet", "free_but_listed",
+WARN_FLAGS = {"overcharge_10x", "overcharge_2x", "unlisted_wallet", "payout_changed", "self_paid", "shared_wallet", "free_but_listed",
               "broken_terms", "dead", "gone", "flaky", "slow", "test_network_only"}
 
 UP = {"healthy", "free", "needs_input", "redirect"}

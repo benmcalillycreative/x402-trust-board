@@ -1,6 +1,7 @@
 // The verdict logic, kept free of Workers APIs so it can be tested with plain Node.
 
 export const RED = "red";
+export const STALE_HOURS = 24; // the board refreshes every 6 hours; a day without one means something is wrong
 
 /** Parse and normalise the URL an agent is about to pay. Returns null if it isn't one. */
 export function parseTarget(raw) {
@@ -49,12 +50,13 @@ export function payToCheck(seller, endpoint, payTo) {
 
 /**
  * Build the answer. verdict is one of:
- *   ok       graded B or better, no warnings, nothing contradicts the payout address
- *   caution  warnings, a low grade, or not enough history to say
- *   avoid    a red flag (e.g. wallet switched, burn address) or an address the seller's own proof contradicts
+ *   ok       graded B or better, no warnings, nothing contradicts the payout address, data under a day old
+ *   caution  warnings (including big price gaps), a low grade, little history, or stale data
+ *   avoid    money would go somewhere it shouldn't: a switched or burn wallet, a non-public address, or an
+ *            address the seller's own payout proof contradicts
  *   unknown  the board has never seen this seller
  */
-export function verdict(target, seller, payTo, board) {
+export function verdict(target, seller, payTo, board, now = Date.now()) {
   const base = { url: target.url, host: target.host, board };
   if (!seller) {
     return {
@@ -98,6 +100,15 @@ export function verdict(target, seller, payTo, board) {
       reasons.push("Graded C: answers, but less reliably than most.");
     }
   }
+  const asOf = Date.parse(seller.generated_at || "");
+  const ageHours = Number.isFinite(asOf) ? Math.max(0, Math.round((now - asOf) / 36e5)) : null;
+  if (ageHours === null || ageHours > STALE_HOURS) {
+    // Old data can't vouch for anything: never answer "ok" on it.
+    if (v === "ok") v = "caution";
+    reasons.push(ageHours === null
+      ? "The board's data on this seller has no date, so it may be out of date."
+      : `The board's data on this seller is ${ageHours} hours old (it normally refreshes every 6 hours).`);
+  }
   if (v === "ok") reasons.push("Answers reliably and its payment terms match its listing.");
   if (seller.payout?.verified) reasons.push("The seller has published a signed proof of its payout address.");
   return {
@@ -129,5 +140,6 @@ export function verdict(target, seller, payTo, board) {
     },
     pay_to: pay,
     data_as_of: seller.generated_at,
+    data_age_hours: ageHours,
   };
 }

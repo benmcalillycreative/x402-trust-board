@@ -11,7 +11,7 @@ const PAY_TO = "0x" + "c3".repeat(20);
 const A = "0x" + "a1".repeat(20);
 const calls = [];
 const SELLER = {
-  host: "api.example.com", name: "Example", grade: "B", average_score: 78, generated_at: "2026-11-18T00:00:00Z",
+  host: "api.example.com", name: "Example", grade: "B", average_score: 78, generated_at: new Date().toISOString(),
   endpoints_total: 1, red_flag_endpoints: 0, payout: { verified: true, best_level: "dns_signed", proofs: [{ address: A, level: "dns_signed" }] },
   endpoints: [{ resource: "https://api.example.com/x", grade: "A", score: 91, listed_pay_to: A, flags: [] }],
 };

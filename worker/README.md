@@ -19,7 +19,7 @@ GET /v1/check?url=<the URL you're about to pay>&payTo=<the address its 402 asks 
 }
 ```
 
-- **avoid**: a red flag (wallet switched, burn address, payout mismatch, 10x overcharge) or the
+- **avoid**: a red flag (wallet switched, burn address, payout mismatch) or the
   address you're about to pay contradicts the payout proof the seller published.
 - **caution**: works, but has warnings, a C/D/F grade, or not enough history.
 - **ok**: graded A or B with matching terms.
