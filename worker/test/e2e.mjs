@@ -38,12 +38,16 @@ const PORT = 8799;
 const W = `http://127.0.0.1:${PORT}`;
 
 const dev = spawn("npx", ["wrangler", "dev", "--port", String(PORT), "--ip", "127.0.0.1",
-  "--var", `BOARD_URL:${F}/`, "--var", `FACILITATOR_URL:${F}/fac`, "--var", `PAY_TO:${PAY_TO}`],
-  { env: { ...process.env, NO_PROXY: "127.0.0.1,localhost", no_proxy: "127.0.0.1,localhost" }, stdio: ["ignore", "pipe", "pipe"] });
+  "--var", `ALERTS_TOKEN:t0ken`, "--var", `BOARD_URL:${F}/`, "--var", `FACILITATOR_URL:${F}/fac`, "--var", `PAY_TO:${PAY_TO}`],
+  { env: { ...process.env, NO_PROXY: "127.0.0.1,localhost", no_proxy: "127.0.0.1,localhost" }, stdio: ["ignore", "pipe", "pipe"], detached: true });
 let log = "";
 dev.stdout.on("data", (d) => (log += d));
 dev.stderr.on("data", (d) => (log += d));
-const done = (code) => { dev.kill("SIGTERM"); fake.close(); process.exit(code); };
+const done = (code) => {
+  try { process.kill(-dev.pid, "SIGTERM"); } catch {} // the whole group: npx, wrangler and workerd
+  fake.close();
+  process.exit(code);
+};
 
 try {
   for (let i = 0; i < 60; i++) {
@@ -79,6 +83,29 @@ try {
   assert.equal((await bad.json()).verdict, "avoid");
   const unk = await pay(`${W}/v1/check?url=${encodeURIComponent("https://never.example/x")}`);
   assert.equal((await unk.json()).verdict, "unknown");
+
+  // Alert sign-ups: subscribe -> queue -> mailed -> confirm -> done, and a signed stop link.
+  const sub = await fetch(`${W}/v1/alerts/subscribe`, { method: "POST", body: new URLSearchParams({ email: "Pat@Example.com", host: "api.example.com" }) });
+  assert.equal(sub.status, 200, await sub.text());
+  assert.equal((await fetch(`${W}/v1/alerts/subscribe`, { method: "POST", body: new URLSearchParams({ email: "x@y.co", host: "never.example" }) })).status, 404);
+  assert.equal((await fetch(`${W}/v1/alerts/queue`)).status, 401);
+  const H = { authorization: "Bearer t0ken", "content-type": "application/json" };
+  let q = (await (await fetch(`${W}/v1/alerts/queue`, { headers: H })).json()).items;
+  assert.equal(q.length, 1);
+  assert.equal(q[0].email, "pat@example.com");
+  assert.equal(q[0].state, "new");
+  await fetch(`${W}/v1/alerts/ack`, { method: "POST", headers: H, body: JSON.stringify({ key: q[0].key, state: "mailed" }) });
+  assert.equal((await fetch(`${W}/v1/alerts/confirm?t=${q[0].key.slice(2)}`)).status, 200);
+  q = (await (await fetch(`${W}/v1/alerts/queue`, { headers: H })).json()).items;
+  assert.equal(q[0].state, "confirmed");
+  await fetch(`${W}/v1/alerts/ack`, { method: "POST", headers: H, body: JSON.stringify({ key: q[0].key, state: "done" }) });
+  const { createHmac } = await import("node:crypto");
+  const sig = createHmac("sha256", "t0ken").update("pat@example.com|api.example.com").digest("hex").slice(0, 32);
+  assert.equal((await fetch(`${W}/v1/alerts/stop?e=pat%40example.com&m=api.example.com&s=bad`)).status, 400);
+  assert.equal((await fetch(`${W}/v1/alerts/stop?e=pat%40example.com&m=api.example.com&s=${sig}`)).status, 200);
+  q = (await (await fetch(`${W}/v1/alerts/queue`, { headers: H })).json()).items;
+  assert.deepEqual(q.map((i) => [i.kind, i.match]), [["stop", "api.example.com"]]);
+  console.log("sign-ups OK");
   console.log("e2e passed");
   done(0);
 } catch (e) {

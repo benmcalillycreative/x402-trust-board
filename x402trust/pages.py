@@ -96,6 +96,10 @@ text-align:left;vertical-align:top;font-size:14px}th{font-size:12px;text-transfo
 .chip.good{background:var(--goodbg);color:var(--good)}code{font-size:12px;word-break:break-all}
 .g{font-weight:700}.muted{color:var(--muted)}textarea{width:100%;font:12px ui-monospace,monospace;padding:8px;
 border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+form.alert{display:flex;gap:8px;flex-wrap:wrap}form.alert input[type=email]{flex:1 1 220px;padding:8px 10px;
+border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+form.alert button{padding:8px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 """
 
 
@@ -177,6 +181,16 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
     body.append('<div class="card"><h2>Endpoints</h2><div class="wrap"><table><thead><tr><th>Endpoint</th><th>Grade</th>'
                 '<th>Answered</th><th>Listed price</th><th>Protocol</th></tr></thead><tbody>'
                 + "".join(trs) + "</tbody></table></div></div>")
+    if config.API_URL:
+        body.append(
+            f'<div class="card"><h2>Get alerts</h2><p>One email when an endpoint here stops answering, comes back, '
+            f'or starts asking a different price or wallet. Nothing otherwise.</p>'
+            f'<form class="alert" method="post" action="{esc(config.API_URL)}/v1/alerts/subscribe">'
+            f'<input type="hidden" name="host" value="{esc(host)}">'
+            f'<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'
+            f'<input type="email" name="email" required placeholder="you@example.com" aria-label="Email">'
+            f'<button type="submit">Watch {esc(host)}</button></form>'
+            f'<p class="muted">You\'ll get a confirmation link first. Unsubscribe in one click from any alert.</p></div>')
     url = f"{BOARD}seller/{host}.html"
     snippet = (f'<a href="{url}"><img src="{BOARD}badge/{host}.svg" '
                f'alt="x402 Trust Board: {grade or "not graded"}{", payout verified" if verified else ""}"></a>')

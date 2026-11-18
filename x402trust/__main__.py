@@ -6,6 +6,7 @@ The cycle
   score     compute trust scores from probe history
   report    write the leaderboard HTML + scores.json
   alerts    email watchers about anything that changed   (--dry-run to preview)
+  signups   process self-serve alert sign-ups from the Worker (also part of run)
   payout    check sellers' published payout proofs (once a day per host)
   chain     count real USDC payments to sellers' Base wallets (incremental, time-capped)
             payout HOST   check one host right now and show what was found
@@ -27,9 +28,10 @@ Alerts
 import argparse
 import sys
 
-from . import alerts, chain, config, crawl, crawl_circle, crawl_mpp, db, notes, payout, probe, report, score
+from . import (alerts, chain, config, crawl, crawl_circle, crawl_mpp, db, notes, payout, probe, report,
+               score, signups)
 
-CYCLE = ["crawl", "probe", "payout", "chain", "score", "report", "alerts", "run", "status"]
+CYCLE = ["crawl", "probe", "payout", "chain", "score", "report", "signups", "alerts", "run", "status"]
 MANAGE = ["note", "notes", "unnote", "watch", "unwatch", "watchers", "test-email"]
 
 
@@ -152,6 +154,11 @@ def main(argv=None):
         score.run(conn)
     if args.command in ("report", "run"):
         report.run(conn)
+    if args.command in ("signups", "run") or (args.command == "alerts" and not args.dry_run):
+        try:
+            signups.run()
+        except Exception as exc:  # sign-ups must never stop the alerts themselves
+            print(f"Sign-ups failed: {exc}", file=sys.stderr)
     if args.command in ("alerts", "run"):
         alerts.run(conn, dry_run=args.dry_run)
     if args.command == "status":

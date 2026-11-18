@@ -10,3 +10,8 @@ BOARD_URL = "https://benmcalillycreative.github.io/x402-trust-board/"
 #   PAY_TO              your Base address that receives the $0.001 payments
 #   CDP_API_KEY_ID      from portal.cdp.coinbase.com > API keys
 #   CDP_API_KEY_SECRET
+#   ALERTS_TOKEN        a long random string; the same value goes in the board's settings.env
+
+# Holds alert sign-up requests until the board picks them up (created on first deploy).
+[[kv_namespaces]]
+binding = "SIGNUPS"

@@ -13,6 +13,7 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import { parseTarget, verdict } from "./check.js";
+import { signups } from "./signups.js";
 
 const BASE = "eip155:8453";
 const PRICE = "$0.001";
@@ -96,6 +97,8 @@ app.get("/", (c) =>
 );
 
 app.get("/v1/health", (c) => c.json({ ok: true, payTo: c.env.PAY_TO || null }));
+
+app.route("/v1/alerts", signups);
 
 // Reject bad input before the paywall, so nobody pays for a typo.
 app.use("/v1/check", async (c, next) => {

@@ -238,6 +238,18 @@ X402T_ALERT_FROM_NAME=Your Name
 
 Run `chmod 600 settings.env` so only your account can read it, and `python3 -m x402trust test-email you@gmail.com` to check it works. Until email is set up, alerts are saved to `~/x402-trust-data/outbox/` and nothing is sent.
 
+**Self-serve sign-ups (optional).** With the Worker in `worker/` deployed, every seller page gets a
+"Get alerts" form. Sign-ups are double opt-in: the Worker only stores the request; this computer sends
+the confirmation email (from the same address as the alerts) and adds the watcher once the link is
+clicked. Every alert then carries a one-click unsubscribe link. Add to `settings.env`:
+
+```
+X402T_API_URL=https://x402-trust-check.<your-subdomain>.workers.dev
+X402T_ALERTS_TOKEN=<the same long random string you gave the Worker as ALERTS_TOKEN>
+```
+
+`python3 -m x402trust signups` processes the queue on demand; `run` does it every cycle.
+
 ## Publishing the board (optional)
 
 The board can publish itself to GitHub Pages after every cycle. It's free, and there's no server to run.

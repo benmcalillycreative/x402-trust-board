@@ -77,7 +77,7 @@ def watch(email, match, name=""):
 
 def unwatch(email, match=None):
     items = load_watchers()
-    kept = [w for w in items if not (w["email"] == email and (match is None or w["match"] == match))]
+    kept = [w for w in items if not (w["email"].lower() == email.lower() and (match is None or w["match"] == match))]
     save_watchers(kept)
     return len(items) - len(kept)
 
@@ -225,7 +225,13 @@ def welcome_body(w, states):
     lines += ["", "From here on you'll get one email per check when something changes: an endpoint stops "
               "answering or comes back, or starts asking a different price or wallet. No change, no email.",
               "", "Ben"]
-    return "\n".join(lines) + FOOTER
+    return "\n".join(lines) + footer(w)
+
+
+def footer(w):
+    from . import signups
+    link = signups.stop_link(w.get("email", ""), w.get("match", ""))
+    return FOOTER + (f"\nOr unsubscribe in one click: {link}" if link else "")
 
 
 def change_body(w, events):
@@ -237,7 +243,7 @@ def change_body(w, events):
     if len(events) > 50:
         lines.append(f"- …and {len(events) - 50} more")
     lines += ["", "Ben"]
-    return "\n".join(lines) + FOOTER
+    return "\n".join(lines) + footer(w)
 
 
 # ---------- the alert step ----------

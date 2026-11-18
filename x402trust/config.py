@@ -78,6 +78,10 @@ SMTP_USER = os.environ.get("X402T_SMTP_USER", "")
 SMTP_PASS = os.environ.get("X402T_SMTP_PASS", "")
 ALERT_FROM = os.environ.get("X402T_ALERT_FROM", "")
 ALERT_FROM_NAME = os.environ.get("X402T_ALERT_FROM_NAME", "x402 Trust Board")
+# Self-serve sign-ups (see signups.py and worker/). API_URL is the deployed Worker, e.g.
+# https://x402-trust-check.<you>.workers.dev; ALERTS_TOKEN is the same secret the Worker has.
+API_URL = os.environ.get("X402T_API_URL", "").rstrip("/")
+ALERTS_TOKEN = os.environ.get("X402T_ALERTS_TOKEN", "")
 
 # Payout verification (see payout.py). DNS lookups go over HTTPS because the standard
 # library has no DNS client; smart-wallet signatures are checked on Base.
