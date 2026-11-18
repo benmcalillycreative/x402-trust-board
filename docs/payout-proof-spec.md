@@ -178,7 +178,17 @@ Exceptions verifiers should handle:
 3. Check it with a verifier, for example the x402 Trust Board's
    [verify page](https://benmcalillycreative.github.io/x402-trust-board/verify.html).
 
-## 10. Open questions
+## 10. Relation to the Offer and Receipt extension
+
+The [Offer and Receipt extension](https://github.com/x402-foundation/x402/blob/main/specs/extensions/extension-offer-and-receipt.md)
+binds a server's **signing key** to its domain (`_controllers.<domain>` TXT, or `did:web`) so offers and receipts
+can be verified. That proves the terms came from the server's key, not that the **payout address** in them
+belongs to the domain's owner: a server whose key is in use by an attacker can still sign an offer naming the
+attacker's address. Payout proofs bind the address itself, with the wallet's own signature. The two compose: a
+verifier can require both. If preferred, the DNS form here could be expressed in the same `_controllers` syntax
+(`controller=did:pkh:eip155:8453:<payTo>`) with a marker for payout use.
+
+## 11. Open questions
 
 - Should `PaymentRequirements.extra` carry a hint (e.g. `"payToProof": "dns"`) so clients know to look?
 - Should facilitators check proofs at `/verify` and refuse a mismatch?
