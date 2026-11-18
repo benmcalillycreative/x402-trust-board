@@ -151,6 +151,11 @@ class OnChain(unittest.TestCase):
         self.assertIn("one_main_payer", flags["https://host-c.example/x"])
         html = Path(report.run(self.conn, log=lambda *_: None)).read_text()
         self.assertIn("Real payments on Base", html)
+        seller = (config.REPORT_DIR / "seller" / "host-a.example.html").read_text()
+        self.assertIn("Endpoints", seller)
+        self.assertIn("Real payments on Base", seller)
+        self.assertIn("<svg", (config.REPORT_DIR / "badge" / "host-a.example.svg").read_text())
+        self.assertIn('href="seller/host-a.example.html"', (config.REPORT_DIR / "sellers.html").read_text())
         data = json.loads((config.REPORT_DIR / "onchain.json").read_text())
         self.assertEqual({h["host"] for h in data["hosts"]}, {"host-a.example", "host-b.example", "host-c.example"})
 

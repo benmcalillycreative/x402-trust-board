@@ -246,7 +246,7 @@ def build_html(rows, crawl, onchain=None):
             f'data-search="{esc((name + " " + r["resource"] + " " + (r["description"] or "")).lower())}">'
             f'<td><span class="grade {grade_cls}">{esc(r["grade"])}</span></td>'
             f'<td class="num" data-v="{r["score"]}">{r["score"]}</td>'
-            f'<td class="ep"><div class="name">{esc(name)}{site_link(r["host"])}{" <span class=cur>curated</span>" if r["curated"] else ""}{" <span class=proto>MPP</span>" if r["protocol"] == "mpp" else ""}</div>'
+            f'<td class="ep"><div class="name"><a class="seller" href="seller/{esc(r["host"])}.html">{esc(name)}</a>{site_link(r["host"])}{" <span class=cur>curated</span>" if r["curated"] else ""}{" <span class=proto>MPP</span>" if r["protocol"] == "mpp" else ""}</div>'
             f'<div class="url">{esc(r["resource"])}</div>'
             f'<div class="flags">{flags}</div></td>'
             f'<td class="num" data-v="{r["uptime"] or 0}">{uptime}</td>'
@@ -324,6 +324,8 @@ tr:last-child td {{ border-bottom:0; }}
 .gA{{background:var(--gA)}} .gB{{background:var(--gB)}} .gC{{background:var(--gC)}}
 .gD{{background:var(--gD)}} .gF{{background:var(--gF)}} .gx{{background:var(--gx)}}
 .ep .name {{ font-weight:600; }}
+.ep a.seller {{ color:inherit; text-decoration:none; }}
+.ep a.seller:hover {{ text-decoration:underline; }}
 .ep a.site {{ font-size:12px; font-weight:400; color:var(--muted); text-decoration:none; margin-left:6px; }}
 .ep a.site:hover {{ text-decoration:underline; }}
 .ep .url {{ color:var(--muted); font-size:12.5px; word-break:break-all; }}
@@ -419,6 +421,8 @@ problems on our side.</p>
 <p><b>Run an endpoint?</b> Prove your payout address is yours, free: publish it on your site or DNS and
 sign it with the wallet. Verified endpoints get a green mark, and if anything ever asks to be paid
 somewhere else, the board flags it. <a href="verify.html">Verify your payout address</a>.</p>
+<p>Every seller has its own page with all of its endpoints, its payout proofs and a badge for its own site:
+<a href="sellers.html">browse sellers</a>.</p>
 {contact_html}
 <p class="engine">Built by engine {engine_version()}. <a href="{SOURCE_URL}">Read the code</a> that grades every endpoint.</p>
 </section>
@@ -477,6 +481,11 @@ def run(conn=None, log=print):
             {"generated_at": db.now(), "window_days": config.CHAIN_WINDOW_DAYS, "chain": "eip155:8453",
              "asset": "USDC", "total_usd": round(onchain["total_usd"], 2), "hosts": onchain["hosts"]},
             separators=(",", ":")))
+    try:
+        from . import pages
+        pages.build(conn, rows, config.REPORT_DIR, onchain["hosts"] if onchain else None, log=log)
+    except Exception as exc:
+        log(f"  (seller pages skipped: {exc})")
     try:
         (config.REPORT_DIR / "payouts.json").write_text(json.dumps(payouts_export(conn), separators=(",", ":")))
     except Exception as exc:

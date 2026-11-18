@@ -22,6 +22,9 @@ cp "$REPORTS/leaderboard.html" "$SITE/index.html"
 cp "$REPORTS/scores.json" "$SITE/scores.json"
 [ -f "$REPORTS/onchain.json" ] && cp "$REPORTS/onchain.json" "$SITE/onchain.json"
 [ -f "$REPORTS/payouts.json" ] && cp "$REPORTS/payouts.json" "$SITE/payouts.json"
+[ -f "$REPORTS/sellers.html" ] && cp "$REPORTS/sellers.html" "$SITE/sellers.html"
+[ -d "$REPORTS/seller" ] && cp -R "$REPORTS/seller" "$SITE/seller"
+[ -d "$REPORTS/badge" ] && cp -R "$REPORTS/badge" "$SITE/badge"
 touch "$SITE/.nojekyll"
 # Static pages (like verify.html), with the contact address filled in.
 for f in site/*.html; do
