@@ -33,7 +33,7 @@ const LISTING_TOOL = {
   description:
     "For sellers: check whether an x402 endpoint is listed in Coinbase's Bazaar and, if not, why. Runs Coinbase's public " +
     "validator (the indexer's own checks), looks the payout address up in Coinbase's merchant list, and adds the " +
-    "x402 Trust Board's 30-day availability against Coinbase's 99% bar for featured listings. Returns findings with a fix for each.",
+    "Settle Watch's 30-day availability against Coinbase's 99% bar for featured listings. Returns findings with a fix for each.",
   inputSchema: {
     type: "object",
     properties: {
@@ -88,7 +88,7 @@ async function handle(env, msg, ip, loadSeller, runListing) {
     return rpc(id, {
       protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "x402-trust-board", title: "x402 Trust Board", version: "1.0.0" },
+      serverInfo: { name: "x402-trust-board", title: "Settle Watch", version: "1.0.0" },
       instructions: "Call check_payment before paying any x402 or MPP endpoint. Don't pay when the verdict is avoid. " +
         "Sellers: call check_listing to find out why an endpoint isn't in Coinbase's Bazaar.",
     });

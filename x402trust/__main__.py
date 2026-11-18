@@ -88,7 +88,7 @@ def manage(args):
         if not a:
             print("Usage: test-email EMAIL")
             return 1
-        result = alerts.deliver(a[0], "x402 Trust Board: test email",
+        result = alerts.deliver(a[0], "Settle Watch: test email",
                                 "If you can read this, alert emails are working.")
         print(f"Test email: {result}")
         return 0 if result == "sent" else 1

@@ -21,7 +21,7 @@ const page = (title, msg, board) =>
   `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
   `<title>${title}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:560px;margin:12vh auto;padding:0 16px;` +
   `color:#1d1d1b;background:#fafaf7}@media(prefers-color-scheme:dark){body{color:#eee;background:#161614}a{color:#9cf}}</style>` +
-  `<h1>${title}</h1><p>${msg}</p><p><a href="${board}">Back to the x402 Trust Board</a></p>`;
+  `<h1>${title}</h1><p>${msg}</p><p><a href="${board}">Back to the Settle Watch</a></p>`;
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 

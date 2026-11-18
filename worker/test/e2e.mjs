@@ -88,7 +88,7 @@ try {
   assert.equal(pr.accepts[0].payTo.toLowerCase(), PAY_TO);
   assert.equal(pr.accepts[0].network, "eip155:8453");
   assert.ok(pr.extensions?.bazaar, "bazaar discovery metadata is declared");
-  assert.equal(pr.resource?.iconUrl, "https://check.benmcalilly.com/icon.png", "icon for the Bazaar listing");
+  assert.equal(pr.resource?.iconUrl, "https://api.settlewatch.com/icon.png", "icon for the Bazaar listing");
   const icon = await fetch(`${W}/icon.png`);
   assert.equal(icon.headers.get("content-type"), "image/png");
   assert.equal(Buffer.from(await icon.arrayBuffer()).subarray(1, 4).toString(), "PNG");

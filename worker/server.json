@@ -1,10 +1,10 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.benmcalillycreative/x402-trust-board",
-  "title": "x402 Trust Board",
+  "title": "Settle Watch",
   "description": "Check an x402 or MPP endpoint before your agent pays it: ok, caution or avoid, with reasons.",
-  "version": "1.0.0",
-  "websiteUrl": "https://benmcalillycreative.github.io/x402-trust-board/",
+  "version": "1.0.1",
+  "websiteUrl": "https://settlewatch.com/",
   "repository": {
     "url": "https://github.com/benmcalillycreative/x402-trust-board",
     "source": "github",
@@ -13,7 +13,7 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://check.benmcalilly.com/mcp"
+      "url": "https://api.settlewatch.com/mcp"
     }
   ]
 }

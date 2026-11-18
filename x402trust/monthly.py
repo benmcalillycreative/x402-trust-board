@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from . import config, db, report
 from .score import FLAG_TEXT, RED_FLAGS, severity
 
-BOARD = "https://benmcalillycreative.github.io/x402-trust-board/"
+BOARD = "https://settlewatch.com/"
 
 
 def _pct(n, d):
@@ -153,7 +153,7 @@ def markdown(s, label, prev=None):
     lines = [
         f"# State of agent payments: {label}",
         "",
-        f"*x402 Trust Board, data for the 30 days to {s['window']['to'][:10]}. Every listed endpoint is "
+        f"*Settle Watch, data for the 30 days to {s['window']['to'][:10]}. Every listed endpoint is "
         f"checked several times a day without paying; payments are counted on Base and Solana.*",
         "",
         "## The market in numbers",
@@ -258,7 +258,7 @@ def _html(md_text, label):
     if in_list:
         out.append("</ul>")
     from .pages import page
-    body = f'<p class="muted"><a href="../index.html">x402 Trust Board</a> / State of agent payments</p>' + "".join(out)
+    body = f'<p class="muted"><a href="../index.html">Settle Watch</a> / State of agent payments</p>' + "".join(out)
     return page(f"State of agent payments: {label}", body,
                 f"Monthly snapshot of the agent-payments market (x402 and MPP): {label}.")
 
@@ -287,8 +287,8 @@ def run(conn=None, label=None, log=print):
                     for k in reversed(issues))
     from .pages import page
     (outdir / "index.html").write_text(page(
-        "State of agent payments: x402 Trust Board",
-        f'<p class="muted"><a href="../index.html">x402 Trust Board</a></p><h1>State of agent payments</h1>'
+        "State of agent payments: Settle Watch",
+        f'<p class="muted"><a href="../index.html">Settle Watch</a></p><h1>State of agent payments</h1>'
         f'<p class="sub">A monthly snapshot of the agent-payments market.</p><div class="card"><ul>{links}</ul></div>',
         "Monthly snapshots of the agent-payments market."))
     log(f"State of agent payments ({pretty}) written to {outdir}/{label_key}.md")

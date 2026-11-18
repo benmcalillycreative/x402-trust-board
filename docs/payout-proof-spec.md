@@ -1,7 +1,7 @@
 # x402 Payout Proofs (draft)
 
 **Status:** draft for discussion · **Version:** `x402payto1` · **Reference verifier:**
-[`x402trust/payout.py`](../x402trust/payout.py) · **Live data:** [payouts.json](https://benmcalillycreative.github.io/x402-trust-board/payouts.json)
+[`x402trust/payout.py`](../x402trust/payout.py) · **Live data:** [payouts.json](https://settlewatch.com/payouts.json)
 
 ## 1. Problem
 
@@ -175,8 +175,8 @@ Exceptions verifiers should handle:
 
 1. Sign the message in section 4 with the payout wallet (any wallet that supports `personal_sign`).
 2. Add the DNS record at your DNS provider, or publish the file.
-3. Check it with a verifier, for example the x402 Trust Board's
-   [verify page](https://benmcalillycreative.github.io/x402-trust-board/verify.html).
+3. Check it with a verifier, for example the Settle Watch's
+   [verify page](https://settlewatch.com/verify.html).
 
 ## 10. Relation to the Offer and Receipt extension
 

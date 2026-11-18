@@ -77,14 +77,14 @@ SMTP_PORT = int(os.environ.get("X402T_SMTP_PORT", "587"))
 SMTP_USER = os.environ.get("X402T_SMTP_USER", "")
 SMTP_PASS = os.environ.get("X402T_SMTP_PASS", "")
 ALERT_FROM = os.environ.get("X402T_ALERT_FROM", "")
-ALERT_FROM_NAME = os.environ.get("X402T_ALERT_FROM_NAME", "x402 Trust Board")
+ALERT_FROM_NAME = os.environ.get("X402T_ALERT_FROM_NAME", "Settle Watch")
 # Self-serve sign-ups (see signups.py and worker/). API_URL is the deployed Worker, e.g.
 # https://x402-trust-check.<you>.workers.dev; ALERTS_TOKEN is the same secret the Worker has.
 API_URL = os.environ.get("X402T_API_URL", "").rstrip("/")
 ALERTS_TOKEN = os.environ.get("X402T_ALERTS_TOKEN", "")
 # What the board's own pages call (sign-up forms, the listing check). Defaults to the public check API, so the forms
 # work even before API_URL/ALERTS_TOKEN are set here; sign-ups then wait in the Worker's queue until they are.
-PUBLIC_API = os.environ.get("X402T_PUBLIC_API", API_URL or "https://check.benmcalilly.com").rstrip("/")
+PUBLIC_API = os.environ.get("X402T_PUBLIC_API", API_URL or "https://api.settlewatch.com").rstrip("/")
 # Coinbase features Bazaar listings with at least this availability over 30 days (platform-measured).
 CURATION_BAR = 0.99
 AVAILABILITY_DAYS = 30

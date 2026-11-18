@@ -1,4 +1,4 @@
-// x402 Trust Board: check-before-you-pay API.
+// Settle Watch: check-before-you-pay API.
 //
 //   GET /v1/check?url=<the URL you're about to pay>[&payTo=<the address its 402 asks for>]
 //
@@ -42,8 +42,8 @@ function routes(env) {
         "burn wallets, overcharges) and whether the payout address is proven by the seller. Returns " +
         "ok, caution, avoid or unknown with reasons.",
       mimeType: "application/json",
-      serviceName: "x402 Trust Board",
-      iconUrl: "https://check.benmcalilly.com/icon.png",
+      serviceName: "Settle Watch",
+      iconUrl: "https://api.settlewatch.com/icon.png",
       tags: ["trust", "security", "x402", "due-diligence", "payments"],
       extensions: declareDiscoveryExtension({
         input: { url: "https://api.example.com/v1/quote", payTo: "0x0000000000000000000000000000000000000001" },
@@ -180,7 +180,7 @@ const app = new Hono();
 
 app.get("/", (c) =>
   c.json({
-    name: "x402 Trust Board check API",
+    name: "Settle Watch check API",
     what: "Ask before you pay: is this x402/MPP endpoint up, are its payment terms what it listed, and is the address it wants paid one the seller has proven?",
     call: "GET /v1/check?url=<paid URL>&payTo=<address from its 402, optional>",
     price: `${priceOf(c.env)} USDC on Base (x402 v2, exact scheme)`,

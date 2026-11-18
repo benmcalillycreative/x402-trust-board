@@ -39,14 +39,18 @@ for f in site/*.html; do
     sed 's|<span class="contact-line">.*</span>||' "$f" > "$SITE/$(basename "$f")"
   fi
 done
-[ -n "${X402T_PUBLISH_DOMAIN:-}" ] && echo "$X402T_PUBLISH_DOMAIN" > "$SITE/CNAME"
+# The board's own domain (GitHub Pages reads it from this file; github.io links redirect there).
+# Set X402T_PUBLISH_DOMAIN= (empty) in settings.env to publish without one.
+DOMAIN="${X402T_PUBLISH_DOMAIN-settlewatch.com}"
+[ -n "$DOMAIN" ] && echo "$DOMAIN" > "$SITE/CNAME"
 
 cd "$SITE"
 git init -q
 git checkout -q -b gh-pages
 git add -A
-git -c user.name="x402 Trust Board" -c user.email="noreply@users.noreply.github.com" \
+git -c user.name="Settle Watch" -c user.email="noreply@users.noreply.github.com" \
     commit -q -m "Board update $(date -u +%Y-%m-%dT%H:%MZ)"
 GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
     git push -q -f "${X402T_PUBLISH_REMOTE:-git@github.com:$REPO.git}" gh-pages
-echo "Published to https://$(echo "$REPO" | cut -d/ -f1 | tr '[:upper:]' '[:lower:]').github.io/$(echo "$REPO" | cut -d/ -f2)/"
+if [ -n "$DOMAIN" ]; then echo "Published to https://$DOMAIN/"; else
+echo "Published to https://$(echo "$REPO" | cut -d/ -f1 | tr '[:upper:]' '[:lower:]').github.io/$(echo "$REPO" | cut -d/ -f2)/"; fi

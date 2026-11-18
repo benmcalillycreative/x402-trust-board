@@ -25,7 +25,7 @@ cat <<EOF
 Almost done. On GitHub, open:
   https://github.com/$REPO/settings/keys/new
 
-  Title:  x402 Trust Board (mini)
+  Title:  Settle Watch (mini)
   Key:    paste the line below
   Tick:   Allow write access
   Then:   Add key

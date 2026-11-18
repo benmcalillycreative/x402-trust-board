@@ -1,4 +1,4 @@
-# x402 Trust Board
+# Settle Watch
 
 An independent referee for agent-payable endpoints: everything in Coinbase's x402 Bazaar, Circle's
 Agent Marketplace and the MPP (Machine Payments Protocol) service directory. Every 6 hours it:
@@ -10,7 +10,7 @@ Agent Marketplace and the MPP (Machine Payments Protocol) service directory. Eve
 
 No wallet, no keys, no dependencies. It never pays anyone.
 
-The live board: https://benmcalillycreative.github.io/x402-trust-board/
+The live board: https://settlewatch.com/
 
 **Source available, all rights reserved.** This code is public so that anyone, sellers included,
 can see exactly how the board grades endpoints. It is not open source: no license is granted to

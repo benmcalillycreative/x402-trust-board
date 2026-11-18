@@ -4,14 +4,14 @@
 //   withTrustGuard(client);                       // client = your x402Client
 //   const pay = wrapFetchWithPayment(fetch, client);
 //
-// Before every payment the client is about to sign, the guard asks the x402 Trust Board whether
+// Before every payment the client is about to sign, the guard asks the Settle Watch whether
 // the endpoint and the address it wants paid look safe, and stops the payment on "avoid"
 // (a switched or burn wallet, a 10x overcharge, an address that contradicts the seller's own
 // payout proof). Answers are cached, so each endpoint is checked at most once a day.
 import { parseTarget, verdict } from "./verdict.js";
 
-export const DEFAULT_API = "https://check.benmcalilly.com";
-export const DEFAULT_BOARD = "https://benmcalillycreative.github.io/x402-trust-board/";
+export const DEFAULT_API = "https://api.settlewatch.com";
+export const DEFAULT_BOARD = "https://settlewatch.com/";
 
 export class PaymentBlocked extends Error {
   constructor(result) {

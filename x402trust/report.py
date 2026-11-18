@@ -347,7 +347,7 @@ def build_html(rows, crawl, onchain=None):
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>x402 Trust Board</title>
+<title>Settle Watch</title>
 <style>
 :root {{
   --bg:#f7f6f2; --panel:#ffffff; --ink:#1b1b18; --muted:#6b6a63; --line:#e4e2da;
@@ -420,7 +420,7 @@ h2 {{ font-size:17px; margin:30px 0 4px; }}
 .about a {{ color:var(--accent); }}
 </style></head>
 <body><main>
-<h1>x402 Trust Board</h1>
+<h1>Settle Watch</h1>
 <p class="sub">Independent checks of the x402 Bazaar, Circle's Agent Marketplace and the MPP service directory. Probed without paying. {crawl_line}</p>
 <div class="stats">
   <div class="stat"><b>{total:,}</b><span>endpoints listed</span></div>

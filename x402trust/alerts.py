@@ -217,7 +217,7 @@ def deliver(to, subject, body, log=print):
         return f"failed: {exc}"[:200]
 
 
-FOOTER = ("\n\n--\nYou're getting this because you asked for x402 Trust Board alerts. "
+FOOTER = ("\n\n--\nYou're getting this because you asked for Settle Watch alerts. "
           "Just reply \"stop\" and I'll take you off the list.")
 
 
@@ -292,7 +292,7 @@ def run(conn=None, dry_run=False, log=print):
             if not first_time:
                 events += events_for(ep["resource"], prev, cur)
         if first_time:
-            subject = f"x402 Trust Board: monitoring is on for {w['match']}"
+            subject = f"Settle Watch: monitoring is on for {w['match']}"
             body = welcome_body(w, states)
         elif events:
             n = len(events)

@@ -15,7 +15,7 @@ from collections import Counter, defaultdict
 from . import config, db, notes, payout
 from .score import FLAG_TEXT, grade_for, severity
 
-BOARD = "https://benmcalillycreative.github.io/x402-trust-board/"
+BOARD = "https://settlewatch.com/"
 GRADE_COLOR = {"A": "#1f7a4d", "B": "#4f8a2b", "C": "#a07a12", "D": "#c05a17", "F": "#b3261e"}
 LEVEL_TEXT = {
     "dns_signed": "Verified: domain DNS + wallet signature",
@@ -159,7 +159,7 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
     name = names.most_common(1)[0][0] if names else host
     grades = Counter(r["grade"] for r in rows)
     red = sum(1 for r in rows if any(severity(f) == "red" for f in r["flags"]))
-    body = [f'<p class="muted"><a href="../index.html">x402 Trust Board</a> / <a href="../sellers.html">Sellers</a></p>',
+    body = [f'<p class="muted"><a href="../index.html">Settle Watch</a> / <a href="../sellers.html">Sellers</a></p>',
             f'<div class="top"><div class="grade" style="background:{color}">{esc(grade or "—")}</div>'
             f'<div><h1>{esc(name)}</h1><p class="sub"><code>{esc(host)}</code>'
             + (f' · <a href="https://{esc(site)}" rel="nofollow noopener">{esc(site)} ↗</a>' if site else "")
@@ -241,7 +241,7 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
             f'<p class="muted">You\'ll get a confirmation link first. Unsubscribe in one click from any alert.</p></div>')
     url = f"{BOARD}seller/{host}.html"
     snippet = (f'<a href="{url}"><img src="{BOARD}badge/{host}.svg" '
-               f'alt="x402 Trust Board: {grade or "not graded"}{", payout verified" if verified else ""}"></a>')
+               f'alt="Settle Watch: {grade or "not graded"}{", payout verified" if verified else ""}"></a>')
     body.append('<p class="muted">Run this service? <a href="../pro.html">See what sellers get</a>, '
                 'including checks on every endpoint.</p>')
     body.append(f'<div class="card"><h2>Badge for your site</h2><p><img src="../badge/{esc(host)}.svg" alt=""></p>'
@@ -250,9 +250,9 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
     body.append(f'<p class="muted">Updated {esc(db.now())}. Data: <a href="../scores.json">scores.json</a> · '
                 f'<a href="../payouts.json">payouts.json</a> · <a href="../method.html">Method and limits</a>. '
                 f'Questions or corrections: reply to any board email.</p>')
-    desc = f"{name} ({host}) on the x402 Trust Board: grade {grade or 'not graded'}, {len(rows)} endpoints" + \
+    desc = f"{name} ({host}) on the Settle Watch: grade {grade or 'not graded'}, {len(rows)} endpoints" + \
            (", payout address verified" if verified else "")
-    return page(f"{name}: x402 Trust Board", "".join(body), desc), badge_svg(grade, verified), grade, verified, name
+    return page(f"{name}: Settle Watch", "".join(body), desc), badge_svg(grade, verified), grade, verified, name
 
 
 JSON_ENDPOINT_CAP = 1000  # per host; listing farms have tens of thousands
@@ -312,7 +312,7 @@ def method_page():
     rows = sorted(FLAG_TEXT.items(), key=lambda kv: (order.get(severity(kv[0]), 9), kv[0]))
     flags = "".join(f'<tr><td><code>{esc(code)}</code></td><td>{esc(text)}</td><td>{label.get(severity(code), "")}</td></tr>'
                     for code, text in rows)
-    body = f"""<p class="muted"><a href="index.html">x402 Trust Board</a> / Method and limits</p>
+    body = f"""<p class="muted"><a href="index.html">Settle Watch</a> / Method and limits</p>
 <h1>Method and limits</h1>
 <p class="sub">What the board checks, what its answers mean, and what they can't promise.</p>
 <div class="card"><h2>What is checked</h2>
@@ -353,8 +353,8 @@ never how it is graded. A seller who thinks a finding is wrong can reply to any 
 <a href="https://github.com/benmcalillycreative/x402-trust-board">public</a>.</p></div>
 <div class="card wrap"><h2>Every flag</h2><table><thead><tr><th>Code</th><th>Meaning</th><th>Level</th></tr></thead>
 <tbody>{flags}</tbody></table></div>"""
-    return page("Method and limits: x402 Trust Board", body,
-                "How the x402 Trust Board checks agent-payable APIs, what its verdicts mean, and what they can't promise.")
+    return page("Method and limits: Settle Watch", body,
+                "How the Settle Watch checks agent-payable APIs, what its verdicts mean, and what they can't promise.")
 
 
 def pro_page():
@@ -369,7 +369,7 @@ def pro_page():
         f'<button type="submit">Ask for early access</button></form>'
     ) if config.PUBLIC_API else '<p>Reply to any board email, or open an issue on the board\'s GitHub, and say which service you run.</p>'
     body = (
-        '<p class="muted"><a href="index.html">x402 Trust Board</a> / For sellers</p>'
+        '<p class="muted"><a href="index.html">Settle Watch</a> / For sellers</p>'
         '<h1>For sellers</h1>'
         '<p class="sub">Get listed, stay listed, and know the moment something breaks. Agents check the board before '
         'they pay, and Coinbase features only listings that stay up.</p>'
@@ -396,8 +396,8 @@ def pro_page():
         'are the board\'s unpaid checks, a second opinion next to Coinbase\'s own probe.</p>'
         f'{form}</div>'
     )
-    return page("For sellers: x402 Trust Board", body,
-                "What sellers of agent-payable APIs get from the x402 Trust Board, free and Pro.")
+    return page("For sellers: Settle Watch", body,
+                "What sellers of agent-payable APIs get from the Settle Watch, free and Pro.")
 
 
 LISTING_JS = """
@@ -445,7 +445,7 @@ if(q.get('url')){f.url.value=q.get('url');if(q.get('method')==='POST')f.method.v
 def listing_page():
     """'Why isn't my endpoint in the Bazaar?' A free check for sellers, run by the check API."""
     body = (
-        '<p class="muted"><a href="index.html">x402 Trust Board</a> / Listing check</p>'
+        '<p class="muted"><a href="index.html">Settle Watch</a> / Listing check</p>'
         '<h1>Why isn\'t my endpoint in the Bazaar?</h1>'
         '<p class="sub">Paste your paid endpoint. This runs Coinbase\'s own validator (the checks the Bazaar indexer '
         'runs), looks your payout address up in Coinbase\'s merchant list, and adds the board\'s 30-day availability '
@@ -477,7 +477,7 @@ def listing_page():
         'rel="noopener">Get discovered</a> docs. Want this watched for you? <a href="pro.html">See the seller plan</a>.</p></div>'
         f'<script>{LISTING_JS}</script>'
     )
-    return page("Listing check: x402 Trust Board", body,
+    return page("Listing check: Settle Watch", body,
                 "Why isn't my x402 endpoint in Coinbase's Bazaar? A free check with a fix for each problem.")
 
 
@@ -516,14 +516,14 @@ def build(conn, rows, outdir, onchain_hosts=None, log=print):
         f'<tr><td><a href="seller/{esc(s)}.html">{esc(s)}</a><br><span class="muted">{esc(n if n != s else "")}</span></td>'
         f'<td class="g" style="color:{GRADE_COLOR.get(g, "inherit")}">{esc(g or "—")}</td><td>{c}</td>'
         f'<td>{"✓" if v else ""}</td></tr>' for n, s, g, v, c in index)
-    body = (f'<p class="muted"><a href="index.html">x402 Trust Board</a></p><h1>Sellers</h1>'
+    body = (f'<p class="muted"><a href="index.html">Settle Watch</a></p><h1>Sellers</h1>'
             f'<p class="sub">Run one of these? <a href="listing.html">Check why a route isn\'t in the Bazaar</a> · <a href="pro.html">What sellers get</a>. {len(index):,} sellers with endpoints listed in the x402 Bazaar, Circle\'s Agent Marketplace or the MPP directory.</p>'
             f'<div class="card wrap"><table><thead><tr><th>Seller</th><th>Grade</th><th>Endpoints</th>'
             f'<th>Payout verified</th></tr></thead><tbody>{lis}</tbody></table></div>')
     (outdir / "pro.html").write_text(pro_page())
     (outdir / "method.html").write_text(method_page())
     (outdir / "listing.html").write_text(listing_page())
-    (outdir / "sellers.html").write_text(page("Sellers: x402 Trust Board", body,
-                                              "Every seller on the x402 Trust Board, with grades and payout verification."))
+    (outdir / "sellers.html").write_text(page("Sellers: Settle Watch", body,
+                                              "Every seller on the Settle Watch, with grades and payout verification."))
     log(f"  Seller pages: {len(index):,}")
     return len(index)

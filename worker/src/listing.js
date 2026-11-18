@@ -177,12 +177,12 @@ export function analyze({ target, validate, merchant, seller, validateError, mer
       const span = days && days < 30 ? `${days} days so far` : "30 days";
       const meets = u30 >= CURATION_BAR;
       add(meets ? "pass" : "warn", `Availability ${pct(u30)} over ${span} (board's checks)`,
-        `${ep.probes_30d ?? "Several"} unpaid checks by the x402 Trust Board. Coinbase features listings at 99% or better over 30 days ` +
+        `${ep.probes_30d ?? "Several"} unpaid checks by the Settle Watch. Coinbase features listings at 99% or better over 30 days ` +
           "(above 99.5% gets priority), measured by its own probe; this is a second opinion, not Coinbase's number.",
         meets ? undefined : "Find the failed checks on your seller page and fix whatever made them fail (timeouts, 5xx, wrong status).");
     }
   } else if (seller === null) {
-    add("info", "Not on the x402 Trust Board yet",
+    add("info", "Not on the Settle Watch yet",
       "The board hasn't seen this URL in the Bazaar, Circle's marketplace or the MPP directory, so it has no availability history for it.");
   }
 

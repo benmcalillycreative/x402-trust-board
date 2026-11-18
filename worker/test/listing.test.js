@@ -46,7 +46,7 @@ test("400 before the middleware: not listed, with the fix", () => {
   assert.equal(f.status, "fail");
   assert.match(f.fix, /reach the middleware/);
   assert.ok(out.findings.some((x) => x.title === "Not listed in the Bazaar yet" && /settles through the CDP facilitator/.test(x.fix)));
-  assert.ok(out.findings.some((x) => x.title === "Not on the x402 Trust Board yet"));
+  assert.ok(out.findings.some((x) => x.title === "Not on the Settle Watch yet"));
   assert.match(out.summary, /to fix first/);
 });
 
@@ -57,7 +57,7 @@ test("passes everything but never settled: says so", () => {
     merchant: { resources: [], pagination: { total: 0 } }, seller: undefined,
   });
   assert.match(out.summary, /needs a settled payment/);
-  assert.ok(!out.findings.some((x) => x.title === "Not on the x402 Trust Board yet"), "board unreadable is not 'not on the board'");
+  assert.ok(!out.findings.some((x) => x.title === "Not on the Settle Watch yet"), "board unreadable is not 'not on the board'");
 });
 
 test("long description, missing icon, below the bar", () => {

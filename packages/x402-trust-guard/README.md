@@ -14,7 +14,7 @@ const pay = wrapFetchWithPayment(fetch, client);
 await pay("https://api.some-seller.com/v1/data"); // throws instead of paying if the seller looks unsafe
 ```
 
-Before your client signs a payment, the guard asks the [x402 Trust Board](https://benmcalillycreative.github.io/x402-trust-board/)
+Before your client signs a payment, the guard asks the [Settle Watch](https://settlewatch.com/)
 about the endpoint and the address it wants paid, and **stops the payment** when the answer is `avoid`:
 
 - the endpoint switched to a different wallet, or asks to be paid at a burn address
@@ -48,12 +48,12 @@ withTrustGuard(client, {
 `checkFree(url, payTo?)` checks one URL yourself, for free, and returns the full result.
 
 What each verdict is based on, and what a pre-payment check can't promise (it never pays, so it can't test delivery):
-[method and limits](https://benmcalillycreative.github.io/x402-trust-board/method.html).
+[method and limits](https://settlewatch.com/method.html).
 
 ## Also available
 
-- **HTTP:** `GET https://check.benmcalilly.com/v1/check?url=…&payTo=…` ($0.01, x402)
-- **MCP:** add `https://check.benmcalilly.com/mcp` as a remote MCP server; tool `check_payment`, 100 free checks a day
-- **Sellers:** prove your payout address with a DNS record and a signature: [how](https://benmcalillycreative.github.io/x402-trust-board/verify.html)
+- **HTTP:** `GET https://api.settlewatch.com/v1/check?url=…&payTo=…` ($0.01, x402)
+- **MCP:** add `https://api.settlewatch.com/mcp` as a remote MCP server; tool `check_payment`, 100 free checks a day
+- **Sellers:** prove your payout address with a DNS record and a signature: [how](https://settlewatch.com/verify.html)
 
 MIT licensed.

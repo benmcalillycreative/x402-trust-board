@@ -17,7 +17,7 @@ export function openapi(env, origin, price) {
   return {
     openapi: "3.1.0",
     info: {
-      title: "x402 Trust Board: check before you pay",
+      title: "Settle Watch: check before you pay",
       version: "1.0.0",
       description:
         "Independent pre-payment check for x402 and MPP endpoints: does it answer, do its payment terms match its " +

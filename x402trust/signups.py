@@ -50,7 +50,7 @@ def confirm_body(email, host, link):
     return "\n".join([
         "Hi,",
         "",
-        f"Someone (hopefully you) asked for x402 Trust Board alerts about {host} to go to {email}.",
+        f"Someone (hopefully you) asked for Settle Watch alerts about {host} to go to {email}.",
         "",
         "To start them, open this link:",
         link,
@@ -95,7 +95,7 @@ def run(log=print):
                     _call("ack", {"key": key, "state": "done"})
                     continue
                 link = f"{config.API_URL}/v1/alerts/confirm?t={key.split(':', 1)[1]}"
-                result = alerts.deliver(email, f"Confirm x402 Trust Board alerts for {it.get('host')}",
+                result = alerts.deliver(email, f"Confirm Settle Watch alerts for {it.get('host')}",
                                         confirm_body(email, it.get("host"), link), log=log)
                 if result == "sent":
                     _call("ack", {"key": key, "state": "mailed"})

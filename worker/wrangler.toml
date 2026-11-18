@@ -3,13 +3,19 @@ main = "src/index.js"
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 
-# The public address (added to benmcalilly.com's zone). workers.dev stays on as well.
-routes = [{ pattern = "check.benmcalilly.com", custom_domain = true }]
+# Public addresses: api.settlewatch.com (current) and check.benmcalilly.com (kept so earlier links,
+# the Bazaar listing and older x402-trust-guard installs keep working). workers.dev stays on as well.
+routes = [
+  { pattern = "api.settlewatch.com", custom_domain = true },
+  { pattern = "check.benmcalilly.com", custom_domain = true },
+]
 # Keep the old address answering: x402scan, the Bazaar and the first payment all used it.
 workers_dev = true
 preview_urls = false
 
 [vars]
+# The board is served at https://settlewatch.com/; the github.io address redirects there and keeps working
+# while GitHub issues the settlewatch.com certificate, so the Worker reads it from github.io.
 BOARD_URL = "https://benmcalillycreative.github.io/x402-trust-board/"
 # Price per check, in USD (paid in USDC on Base). Change it and run `npx wrangler deploy`.
 PRICE = "$0.01"
