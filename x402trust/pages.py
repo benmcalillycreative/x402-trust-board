@@ -190,6 +190,52 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
     return page(f"{name}: x402 Trust Board", "".join(body), desc), badge_svg(grade, verified), grade, verified, name
 
 
+JSON_ENDPOINT_CAP = 1000  # per host; listing farms have tens of thousands
+
+
+def seller_json(host, rows, proofs, name, onchain=None):
+    """Machine-readable seller record: what the check-before-you-pay API reads."""
+    from .report import listed_on
+    grade, avg = host_grade(rows)
+    ranked = sorted(rows, key=lambda r: (r["grade"] in (None, "—"), -(r["probes"] or 0)))
+    eps = []
+    for r in ranked[:JSON_ENDPOINT_CAP]:
+        eps.append({
+            "resource": r["resource"],
+            "grade": r["grade"] if r["grade"] not in (None, "—") else None,
+            "score": r["score"] if r["grade"] not in (None, "—") else None,
+            "uptime": r["uptime"],
+            "p50_latency_ms": r["p50_latency_ms"],
+            "probes": r["probes"],
+            "listed_usd": r["listed_usd"],
+            "network": r.get("network"),
+            "listed_pay_to": r.get("pay_to"),
+            "protocol": r.get("protocol") or "x402",
+            "listed_on": listed_on(r),
+            "flags": [{"code": f, "severity": severity(f), "text": FLAG_TEXT.get(f, f)} for f in r["flags"]],
+        })
+    level = best_level({p["level"] for p in proofs})
+    return {
+        "host": host,
+        "name": name,
+        "generated_at": db.now(),
+        "grade": grade,
+        "average_score": avg,
+        "endpoints_total": len(rows),
+        "endpoints_graded": sum(1 for r in rows if r["grade"] not in (None, "—")),
+        "red_flag_endpoints": sum(1 for r in rows if any(severity(f) == "red" for f in r["flags"])),
+        "payout": {
+            "verified": level in ("dns_signed", "site_signed"),
+            "best_level": level,
+            "proofs": [{"address": p["address"], "level": p["level"]} for p in proofs],
+        },
+        "onchain": ({k: onchain.get(k) for k in ("usd", "payments", "payers", "own_share") if k in onchain}
+                    if onchain else None),
+        "page": f"{BOARD}seller/{slug(host)}.html",
+        "endpoints": eps,
+    }
+
+
 def build(conn, rows, outdir, onchain_hosts=None, log=print):
     """Write seller/, badge/ and sellers.html under outdir. Returns the number of pages."""
     from .report import website
@@ -217,6 +263,8 @@ def build(conn, rows, outdir, onchain_hosts=None, log=print):
             host, hrows, set(levels.get(host, {}).values()), proofs.get(host, []), hn, website(host), chain.get(host))
         (outdir / "seller" / f"{s}.html").write_text(html_text)
         (outdir / "badge" / f"{s}.svg").write_text(svg)
+        (outdir / "seller" / f"{s}.json").write_text(json.dumps(
+            seller_json(host, hrows, proofs.get(host, []), name, chain.get(host)), separators=(",", ":")))
         index.append((name, s, grade, verified, len(hrows)))
     index.sort(key=lambda t: (t[1]))
     lis = "".join(
@@ -224,7 +272,7 @@ def build(conn, rows, outdir, onchain_hosts=None, log=print):
         f'<td class="g" style="color:{GRADE_COLOR.get(g, "inherit")}">{esc(g or "—")}</td><td>{c}</td>'
         f'<td>{"✓" if v else ""}</td></tr>' for n, s, g, v, c in index)
     body = (f'<p class="muted"><a href="index.html">x402 Trust Board</a></p><h1>Sellers</h1>'
-            f'<p class="sub">{len(index):,} sellers with endpoints listed in the x402 Bazaar or the MPP directory.</p>'
+            f'<p class="sub">{len(index):,} sellers with endpoints listed in the x402 Bazaar, Circle\'s Agent Marketplace or the MPP directory.</p>'
             f'<div class="card wrap"><table><thead><tr><th>Seller</th><th>Grade</th><th>Endpoints</th>'
             f'<th>Payout verified</th></tr></thead><tbody>{lis}</tbody></table></div>')
     (outdir / "sellers.html").write_text(page("Sellers: x402 Trust Board", body,

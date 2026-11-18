@@ -199,6 +199,13 @@ faster. Set `X402T_CHAIN=0` to turn it off.
 
 Only Base USDC is counted for now. Solana, Tempo (MPP) and other tokens show no on-chain numbers.
 
+## Check-before-you-pay API (worker/)
+
+`seller/<host>.json` on the board holds each seller's grade, payout proofs and up to 1,000 endpoint
+records with their flags. The Cloudflare Worker in `worker/` turns that into a paid x402 endpoint,
+`GET /v1/check?url=...&payTo=...` at $0.001, that answers ok / caution / avoid / unknown with reasons.
+See `worker/README.md` to deploy it.
+
 ## Automatic updates
 
 When this folder is a git checkout of the `main` branch, `run.sh` checks GitHub for new code

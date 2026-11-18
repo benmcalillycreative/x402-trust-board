@@ -1,0 +1,12 @@
+name = "x402-trust-check"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+BOARD_URL = "https://benmcalillycreative.github.io/x402-trust-board/"
+
+# Set these with `npx wrangler secret put NAME` (never in this file):
+#   PAY_TO              your Base address that receives the $0.001 payments
+#   CDP_API_KEY_ID      from portal.cdp.coinbase.com > API keys
+#   CDP_API_KEY_SECRET
