@@ -110,7 +110,11 @@ app.all("/mcp", (c) => mcp(c, loadSeller));
 // Reject bad input before the paywall, so nobody pays for a typo.
 app.use("/v1/check", async (c, next) => {
   if (!c.env.PAY_TO) return c.json({ error: "Not configured yet: PAY_TO is missing." }, 503);
-  const target = parseTarget(c.req.query("url"));
+  // No url at all: let the paywall answer 402 with the price, so directories and scanners that probe
+  // the bare endpoint can discover it. A url that's there but malformed is refused before the paywall.
+  const raw = c.req.query("url");
+  if (!raw) return next();
+  const target = parseTarget(raw);
   if (!target) return c.json({ error: "Pass the full https:// URL you're about to pay as ?url=" }, 400);
   const payTo = c.req.query("payTo");
   if (payTo && !/^0x[0-9a-fA-F]{40}$/.test(payTo) && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(payTo)) {
@@ -124,6 +128,8 @@ app.use("/v1/check", (c, next) => paywall(c.env)(c, next));
 
 app.get("/v1/check", async (c) => {
   const target = c.get("target");
+  // Paid without a url (a scanner, say): 4xx responses aren't settled, so nothing is charged.
+  if (!target) return c.json({ error: "Pass the full https:// URL you're about to pay as ?url=" }, 400);
   let seller;
   try {
     seller = await loadSeller(c.env, target.host);

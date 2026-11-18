@@ -56,6 +56,7 @@ try {
   }
   assert.equal((await (await fetch(`${W}/v1/health`)).json()).payTo, PAY_TO);
   assert.equal((await fetch(`${W}/v1/check?url=nope`)).status, 400, "bad input is refused before the paywall");
+  assert.equal((await fetch(`${W}/v1/check`)).status, 402, "the bare endpoint shows its price to scanners");
 
   const unpaid = await fetch(`${W}/v1/check?url=${encodeURIComponent("https://api.example.com/x")}`);
   assert.equal(unpaid.status, 402);
