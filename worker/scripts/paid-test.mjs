@@ -10,7 +10,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { wrapFetchWithPayment, x402Client, decodePaymentResponseHeader } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 
-const API = process.env.API || "https://x402-trust-check.ben-mcalilly.workers.dev";
+const API = process.env.API || "https://check.benmcalilly.com";
 const TARGET = process.argv[2] || "https://api.bitrefill.com/x402/products";
 const FILE = new URL("../.test-wallet", import.meta.url);
 

@@ -3,6 +3,9 @@ main = "src/index.js"
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 
+# The public address (added to benmcalilly.com's zone). workers.dev stays on as well.
+routes = [{ pattern = "check.benmcalilly.com", custom_domain = true }]
+
 [vars]
 BOARD_URL = "https://benmcalillycreative.github.io/x402-trust-board/"
 # Price per check, in USD (paid in USDC on Base). Change it and run `npx wrangler deploy`.

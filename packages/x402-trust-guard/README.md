@@ -52,8 +52,8 @@ What each verdict is based on, and what a pre-payment check can't promise (it ne
 
 ## Also available
 
-- **HTTP:** `GET https://x402-trust-check.ben-mcalilly.workers.dev/v1/check?url=…&payTo=…` ($0.01, x402)
-- **MCP:** add `https://x402-trust-check.ben-mcalilly.workers.dev/mcp` as a remote MCP server; tool `check_payment`, 100 free checks a day
+- **HTTP:** `GET https://check.benmcalilly.com/v1/check?url=…&payTo=…` ($0.01, x402)
+- **MCP:** add `https://check.benmcalilly.com/mcp` as a remote MCP server; tool `check_payment`, 100 free checks a day
 - **Sellers:** prove your payout address with a DNS record and a signature: [how](https://benmcalillycreative.github.io/x402-trust-board/verify.html)
 
 MIT licensed.

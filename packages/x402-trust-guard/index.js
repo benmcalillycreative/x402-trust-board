@@ -10,7 +10,7 @@
 // payout proof). Answers are cached, so each endpoint is checked at most once a day.
 import { parseTarget, verdict } from "./verdict.js";
 
-export const DEFAULT_API = "https://x402-trust-check.ben-mcalilly.workers.dev";
+export const DEFAULT_API = "https://check.benmcalilly.com";
 export const DEFAULT_BOARD = "https://benmcalillycreative.github.io/x402-trust-board/";
 
 export class PaymentBlocked extends Error {
