@@ -14,6 +14,8 @@
 //   plan:<id>  {id, host, email, created, paid_until, payments[]}   id = first 24 hex of sha256(host|email)
 //   b:<hex>    one settled payment, waiting for the board's computer (kind "payment" in /v1/alerts/queue)
 
+import { countPaid } from "./stats.js";
+
 const DAY = 86400;
 export const PLAN_MONTHS = [1, 3, 12];
 export const PLAN_MONTHLY_USD = 11.99;
@@ -184,6 +186,7 @@ export function registerPlan(app, paywall) {
     const key = `b:${crypto.randomUUID().replace(/-/g, "")}`;
     await c.env.SIGNUPS.put(key, JSON.stringify({ id: rec.id, host: rec.host, email: rec.email, ...pay,
       paid_until: rec.paid_until, previous_until: previous, state: "new" }), { expirationTtl: 90 * DAY });
+    await countPaid(c.env, "plans", settled, pay.amount).catch(() => {});
   });
 
   // 3) The x402 paywall: agents get a 402 with the terms, people in a browser get a wallet page.

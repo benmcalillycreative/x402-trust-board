@@ -236,6 +236,12 @@ try {
   assert.equal((await fetch(`${W}/v1/alerts/ack`, { method: "POST", headers: H, body: JSON.stringify({ key: pays[0].key, state: "done" }) })).status, 200);
   q = (await (await fetch(`${W}/v1/alerts/queue`, { headers: H })).json()).items;
   assert.equal(q.filter((i) => i.kind === "payment").length, 2);
+  const sj = await (await fetch(`${W}/v1/stats`)).json();
+  assert.equal(sj.days.length, 1);
+  assert.equal(sj.days[0].checks, 3, "the three paid checks above");
+  assert.equal(sj.days[0].plans, 3, "three plan payments (the failed settle isn't counted)");
+  assert.equal(sj.last_7_days.usd, 59.98);
+  assert.ok(Object.keys(sj.days[0].payers).every((p) => /^0x[0-9a-f]{4}…[0-9a-f]{4}$/.test(p)), "payers shortened");
   console.log("seller plan OK:", pj.paid_until);
   console.log("e2e passed");
   done(0);

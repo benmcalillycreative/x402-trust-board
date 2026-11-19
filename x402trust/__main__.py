@@ -30,7 +30,7 @@ import argparse
 import sys
 
 from . import (alerts, chain, chain_sol, config, crawl, crawl_circle, crawl_mpp, db, monthly, notes, payout, plans, probe,
-               report, score, signups)
+               report, score, signups, stats)
 
 CYCLE = ["crawl", "probe", "payout", "chain", "score", "report", "signups", "alerts", "monthly", "run", "status"]
 MANAGE = ["note", "notes", "unnote", "watch", "unwatch", "watchers", "test-email"]
@@ -176,6 +176,10 @@ def main(argv=None):
             plans.cycle(conn)
         except Exception as exc:
             print(f"Seller plans failed: {exc}", file=sys.stderr)
+        try:
+            stats.write()
+        except Exception as exc:
+            print(f"Stats failed: {exc}", file=sys.stderr)
     if args.command in ("alerts", "run"):
         alerts.run(conn, dry_run=args.dry_run)
     if args.command == "status":

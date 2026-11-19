@@ -17,7 +17,8 @@ import { signups } from "./signups.js";
 import { mcp } from "./mcp.js";
 import { openapi, wellKnown } from "./openapi.js";
 import { ICON_PNG_BASE64 } from "./icon.js";
-import { registerPlan, planRoute } from "./plan.js";
+import { registerPlan, planRoute, decodeSettlement } from "./plan.js";
+import { countPaid, stats } from "./stats.js";
 import { evmPaywall } from "@x402/paywall/evm";
 import { analyze, findPayTo, parseListingInput, LISTING_FREE_PER_DAY } from "./listing.js";
 
@@ -231,6 +232,9 @@ app.get("/v1/health", (c) => c.json({ ok: true, payTo: c.env.PAY_TO || null }));
 
 app.route("/v1/alerts", signups);
 
+// Public usage numbers: paid checks and plan payments per day, no emails, payers shortened.
+app.get("/v1/stats", async (c) => c.json(await stats(c.env), 200, { "cache-control": "public, max-age=300" }));
+
 // The seller plan, paid in USDC through the same x402 middleware (see plan.js).
 registerPlan(app, paywall);
 
@@ -260,6 +264,13 @@ app.use("/v1/check", async (c, next) => {
   }
   c.set("target", target);
   return next();
+});
+
+// Count settled checks (aggregate only) so the board can publish how often the check is really paid for.
+app.use("/v1/check", async (c, next) => {
+  await next();
+  const settled = c.res && c.res.status === 200 ? decodeSettlement(c.res.headers.get("PAYMENT-RESPONSE")) : null;
+  if (settled) await countPaid(c.env, "checks", settled, priceOf(c.env)).catch(() => {});
 });
 
 app.use("/v1/check", (c, next) => paywall(c.env)(c, next));
