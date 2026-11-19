@@ -175,7 +175,7 @@ Exceptions verifiers should handle:
 
 1. Sign the message in section 4 with the payout wallet (any wallet that supports `personal_sign`).
 2. Add the DNS record at your DNS provider, or publish the file.
-3. Check it with a verifier, for example the Settle Watch's
+3. Check it with a verifier, for example Settle Watch's
    [verify page](https://settlewatch.com/verify.html).
 
 ## 10. Relation to the Offer and Receipt extension

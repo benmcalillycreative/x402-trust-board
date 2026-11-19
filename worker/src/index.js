@@ -10,7 +10,7 @@ import { Hono } from "hono";
 import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
-import { createFacilitatorConfig } from "@coinbase/x402";
+import { createFacilitatorConfig, createAuthHeader } from "@coinbase/x402";
 import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import { parseTarget, verdict } from "./check.js";
 import { signups } from "./signups.js";
@@ -118,21 +118,35 @@ async function underLimit(env, ip, kind, perDay) {
   return n <= perDay;
 }
 
+// Coinbase rate-limits anonymous calls from shared Cloudflare addresses (429), so sign them with the CDP key the
+// Worker already holds for settling. If signing isn't accepted, fall back to an anonymous call.
+async function cdpCall(env, method, path, body, ms) {
+  const url = `${CDP(env)}${path}`;
+  const base = { "user-agent": "settlewatch/1.0 (+listing check)", ...(body ? { "content-type": "application/json" } : {}) };
+  const init = (headers) => ({ method, headers, ...(body ? { body: JSON.stringify(body) } : {}) });
+  if (env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET && !env.CDP_PUBLIC_API) {
+    try {
+      const u = new URL(url);
+      const auth = await createAuthHeader(env.CDP_API_KEY_ID, env.CDP_API_KEY_SECRET, method, u.host, u.pathname);
+      return await fetchJson(url, init({ ...base, Authorization: auth }), ms);
+    } catch (e) {
+      if (!/HTTP (401|403)/.test(String(e?.message))) throw e;
+    }
+  }
+  return fetchJson(url, init(base), ms);
+}
+
 async function runListing(env, target, method) {
   let validate = null, validateError = null, merchant = null, merchantError = null, seller;
   try {
-    validate = await fetchJson(`${CDP(env)}/v2/x402/validate`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "user-agent": "x402-trust-board/1.0 (+listing check)" },
-      body: JSON.stringify({ resource: target.url, method }),
-    }, 25000);
+    validate = await cdpCall(env, "POST", "/v2/x402/validate", { resource: target.url, method }, 25000);
   } catch (e) {
     validateError = `Coinbase's validator: ${e.message || e}`;
   }
   const payTo = findPayTo(validate?.paymentRequirements);
   if (payTo && /^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/.test(payTo)) {
     try {
-      merchant = await fetchJson(`${CDP(env)}/v2/x402/discovery/merchant?payTo=${encodeURIComponent(payTo)}&limit=100&offset=0`);
+      merchant = await cdpCall(env, "GET", `/v2/x402/discovery/merchant?payTo=${encodeURIComponent(payTo)}&limit=100&offset=0`, null, 15000);
     } catch (e) {
       merchantError = `${e.message || e}`;
     }

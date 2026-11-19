@@ -250,7 +250,7 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
     body.append(f'<p class="muted">Updated {esc(db.now())}. Data: <a href="../scores.json">scores.json</a> · '
                 f'<a href="../payouts.json">payouts.json</a> · <a href="../method.html">Method and limits</a>. '
                 f'Questions or corrections: reply to any board email.</p>')
-    desc = f"{name} ({host}) on the Settle Watch: grade {grade or 'not graded'}, {len(rows)} endpoints" + \
+    desc = f"{name} ({host}) on Settle Watch: grade {grade or 'not graded'}, {len(rows)} endpoints" + \
            (", payout address verified" if verified else "")
     return page(f"{name}: Settle Watch", "".join(body), desc), badge_svg(grade, verified), grade, verified, name
 
@@ -354,7 +354,7 @@ never how it is graded. A seller who thinks a finding is wrong can reply to any 
 <div class="card wrap"><h2>Every flag</h2><table><thead><tr><th>Code</th><th>Meaning</th><th>Level</th></tr></thead>
 <tbody>{flags}</tbody></table></div>"""
     return page("Method and limits: Settle Watch", body,
-                "How the Settle Watch checks agent-payable APIs, what its verdicts mean, and what they can't promise.")
+                "How Settle Watch checks agent-payable APIs, what its verdicts mean, and what they can't promise.")
 
 
 def pro_page():
@@ -397,7 +397,7 @@ def pro_page():
         f'{form}</div>'
     )
     return page("For sellers: Settle Watch", body,
-                "What sellers of agent-payable APIs get from the Settle Watch, free and Pro.")
+                "What sellers of agent-payable APIs get from Settle Watch, free and Pro.")
 
 
 LISTING_JS = """
@@ -524,6 +524,6 @@ def build(conn, rows, outdir, onchain_hosts=None, log=print):
     (outdir / "method.html").write_text(method_page())
     (outdir / "listing.html").write_text(listing_page())
     (outdir / "sellers.html").write_text(page("Sellers: Settle Watch", body,
-                                              "Every seller on the Settle Watch, with grades and payout verification."))
+                                              "Every seller on Settle Watch, with grades and payout verification."))
     log(f"  Seller pages: {len(index):,}")
     return len(index)
