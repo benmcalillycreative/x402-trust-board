@@ -56,7 +56,7 @@ const { mkdtempSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const STATE = mkdtempSync(`${tmpdir()}/x402t-e2e-`);
 const dev = spawn("npx", ["wrangler", "dev", "--port", String(PORT), "--ip", "127.0.0.1", "--persist-to", STATE,
-  "--var", `ALERTS_TOKEN:t0ken`, "--var", "PRICE:$0.01", "--var", `BOARD_URL:${F}/`, "--var", `FACILITATOR_URL:${F}/fac`, "--var", `PAY_TO:${PAY_TO}`, "--var", `CDP_PUBLIC_API:${F}/cdp`],
+  "--var", `ALERTS_TOKEN:t0ken`, "--var", "PRICE:$0.01", "--var", `BOARD_URL:${F}/`, "--var", `FACILITATOR_URL:${F}/fac`, "--var", `PAY_TO:${PAY_TO}`, "--var", `CDP_PUBLIC_API:${F}/cdp`, "--var", "LISTING_PER_DAY:2"],
   { env: { ...process.env, NO_PROXY: "127.0.0.1,localhost", no_proxy: "127.0.0.1,localhost" }, stdio: ["ignore", "pipe", "pipe"], detached: true });
 let log = "";
 dev.stdout.on("data", (d) => (log += d));
@@ -168,6 +168,10 @@ try {
   const lb = await (await L("https://api.example.com/broken", "&method=POST")).json();
   assert.equal(lb.listed, false);
   assert.ok(lb.findings.some((f) => f.status === "fail" && f.fix));
+  assert.equal((await L("https://api.example.com/y")).status, 429, "public limit (2 a day in this test)");
+  const authed = await fetch(`${W}/v1/listing?url=${encodeURIComponent("https://api.example.com/y")}`, { headers: { authorization: "Bearer t0ken" } });
+  assert.equal(authed.status, 200, "the board's own reviews aren't limited");
+  assert.equal((await fetch(`${W}/v1/listing?url=${encodeURIComponent("https://api.example.com/z")}`, { headers: { authorization: "Bearer nope" } })).status, 429);
   const tl = await call({ jsonrpc: "2.0", id: 4, method: "tools/list" });
   assert.deepEqual(tl.result.tools.map((t) => t.name), ["check_payment", "check_listing"]);
   const lt = await call({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "check_listing", arguments: { url: "https://api.example.com/broken" } } });

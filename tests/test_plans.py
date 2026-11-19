@@ -11,7 +11,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("X402T_DATA_DIR", tempfile.mkdtemp())
 
-from x402trust import alerts, config, pages, plans, signups  # noqa: E402
+from x402trust import alerts, config, db, pages, plans, signups  # noqa: E402
 
 NOW = datetime(2026, 11, 18, 12, tzinfo=timezone.utc)
 PID = "a" * 24
@@ -126,6 +126,119 @@ class Plans(unittest.TestCase):
         self.assertIn("12 months: $143.88", h)
         self.assertIn("Nothing renews or charges by itself", h)
         self.assertNotIn("Early access", h)
+
+
+HOST = "api.example.com"
+USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+
+
+class ReviewAndReport(Plans):
+    """The listing review a new plan gets, and the monthly availability report."""
+
+    def setUp(self):
+        super().setUp()
+        plans.REVIEW_PAUSE = 0
+        self.old_db = config.DB_PATH
+        config.DB_PATH = config.DATA_DIR / "trust.db"
+        self.conn = db.connect()
+        self.addCleanup(self.conn.close)
+        self.addCleanup(setattr, config, "DB_PATH", self.old_db)
+        for path, method, desc in (("/a", "GET", "Quotes for agents"), ("/b", "POST", None), ("/c", "GET", None)):
+            self.conn.execute(
+                "INSERT INTO endpoints (resource, host, first_seen, last_seen, method, network, asset, pay_to, "
+                "listed_amount, listed_usd, l30_payers, catalog_json, service_name, description) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (f"https://{HOST}{path}", HOST, iso(NOW - timedelta(days=60)), iso(NOW), method, "eip155:8453", USDC,
+                 "0x" + "11" * 20, "10000", 0.01, 3, "{}", "Example Quotes", desc))
+        self.conn.commit()
+
+    def probe(self, path, when, outcome="healthy", status=402, error=None):
+        self.conn.execute("INSERT INTO probes (resource, ts, outcome, status_code, latency_ms, error) VALUES (?,?,?,?,?,?)",
+                          (f"https://{HOST}{path}", when.strftime("%Y-%m-%dT%H:%M:%SZ"), outcome, status, 300, error))
+
+    def fill(self, now):
+        for d in range(30):
+            for h in (2, 14):
+                t = now - timedelta(days=d, hours=h)
+                self.probe("/a", t)
+                bad = h == 2 and d % 3 == 0  # /b fails 10 of 60
+                self.probe("/b", t, *(("http_error", 503) if bad else ("healthy", 402)))
+        self.probe("/c", now - timedelta(hours=3))
+        self.probe("/a", now - timedelta(days=2, hours=5), "unreachable", None, "SSL: TLSV1_ALERT_ACCESS_DENIED")
+        self.conn.commit()
+
+    def fake_listing(self, url, method):
+        self.looked.append((url, method))
+        if url.endswith("/c"):
+            raise OSError("timed out")
+        if url.endswith("/b"):
+            return {"listed": False, "summary": "Not listed: 1 thing to fix first.", "findings": [
+                {"status": "fail", "title": "Answers an unpaid request with 402 Payment Required",
+                 "detail": "got 400", "fix": "Let unpaid requests reach the middleware."},
+                {"status": "warn", "title": "Listing metadata is incomplete", "detail": "missing: icon", "fix": "Set iconUrl."}]}
+        return {"listed": True, "summary": "Listed in the Bazaar, and nothing blocking it.", "findings": [
+            {"status": "warn", "title": "Listing metadata is incomplete", "detail": "missing: icon", "fix": "Set iconUrl."},
+            {"status": "pass", "title": "Passes Coinbase's indexing checks"}]}
+
+    def test_new_plan_gets_one_listing_review_with_owner_copy(self):
+        self.fill(NOW)
+        self.queue = [payment()]
+        signups.run(log=lambda *a: None)
+        self.looked, self.mail = [], []
+        with mock.patch.object(plans, "listing", self.fake_listing):
+            plans.cycle(self.conn, now=NOW, log=lambda *a: None)
+            self.assertEqual(sorted(self.looked), [(f"https://{HOST}/a", "GET"), (f"https://{HOST}/b", "POST"),
+                                                   (f"https://{HOST}/c", "GET")])
+            review = next(m for m in self.mail if m[0] == "dev@example.com")
+            self.assertEqual(review[1], f"Listing review for {HOST}")
+            body = review[2]
+            self.assertIn("In the Bazaar now: 1 of 2 checked.", body)
+            self.assertLess(body.index("[Fix] Answers an unpaid request"), body.index("[Check] Listing metadata is incomplete (2 routes)"),
+                            "blocking problems first, then the rest grouped across routes")
+            self.assertIn("Fix: Let unpaid requests reach the middleware.", body)
+            self.assertIn("Couldn't check", body)
+            self.assertIn("github.com/coinbase/cdp-sdk/issues/new", body)
+            self.assertIn("Service: Example Quotes", body)
+            self.assertIn("Description: Quotes for agents", body)
+            self.assertTrue(any(m[0] == "owner@settlewatch.test" and m[1].startswith("[copy]") for m in self.mail))
+            self.assertTrue(plans.load()[PID]["reviewed"])
+            self.mail, self.looked = [], []
+            plans.cycle(self.conn, now=NOW + timedelta(hours=6), log=lambda *a: None)
+            self.assertEqual(self.looked, [], "only once per plan")
+
+    def test_review_waits_when_the_api_is_down(self):
+        self.queue = [payment()]
+        signups.run(log=lambda *a: None)
+        with mock.patch.object(plans, "listing", side_effect=OSError("down")):
+            plans.cycle(self.conn, now=NOW, log=lambda *a: None)
+        self.assertFalse(plans.load()[PID].get("reviewed"), "tried again next run")
+
+    def test_monthly_report_once_per_month_with_failed_checks(self):
+        self.queue = [payment(until=NOW + timedelta(days=90))]  # paid Nov 18
+        signups.run(log=lambda *a: None)
+        book = plans.load()
+        book[PID]["reviewed"] = iso(NOW)
+        plans.save(book)
+        self.mail = []
+        plans.cycle(self.conn, now=NOW + timedelta(days=5), log=lambda *a: None)
+        self.assertFalse(any("Availability report" in m[1] for m in self.mail), "no report in the month it started")
+        dec1 = datetime(2026, 12, 1, 8, tzinfo=timezone.utc)
+        self.fill(dec1)
+        plans.cycle(self.conn, now=dec1, log=lambda *a: None)
+        rep = [m for m in self.mail if "Availability report" in m[1]]
+        self.assertEqual(len(rep), 1)
+        self.assertEqual(rep[0][1], f"Availability report for {HOST}, November 2026")
+        body = rep[0][2]
+        self.assertIn("Below 99%: 1", body)
+        self.assertIn("Above 99.5% (priority placement): 1", body)
+        self.assertIn("Too few checks to judge (under 10): 1", body)
+        self.assertIn(f"https://{HOST}/b: 10 failed", body)
+        self.assertIn("HTTP 503", body)
+        self.assertNotIn("TLSV1_ALERT_ACCESS_DENIED", body, "our own connection problems aren't counted")
+        self.assertLess(body.index(f"BELOW 99%       https://{HOST}/b"), body.index(f"priority        https://{HOST}/a"))
+        self.mail = []
+        plans.cycle(self.conn, now=dec1 + timedelta(hours=6), log=lambda *a: None)
+        self.assertFalse(any("Availability report" in m[1] for m in self.mail), "once a month")
 
 
 if __name__ == "__main__":

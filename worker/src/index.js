@@ -193,8 +193,11 @@ async function listingCheck(c) {
     if (hit) return c.json({ ...JSON.parse(hit), cached: true });
   }
   const ip = c.req.header("cf-connecting-ip") || "unknown";
-  if (!(await underLimit(c.env, ip, "listing", LISTING_FREE_PER_DAY))) {
-    return c.json({ error: `Free limit reached (${LISTING_FREE_PER_DAY} listing checks a day). Try again tomorrow.` }, 429);
+  // The board's own computer (seller-plan listing reviews) authenticates and isn't held to the public limit.
+  const board = c.env.ALERTS_TOKEN && c.req.header("authorization") === `Bearer ${c.env.ALERTS_TOKEN}`;
+  const perDay = parseInt(c.env.LISTING_PER_DAY, 10) || LISTING_FREE_PER_DAY;
+  if (!board && !(await underLimit(c.env, ip, "listing", perDay))) {
+    return c.json({ error: `Free limit reached (${perDay} listing checks a day). Try again tomorrow.` }, 429);
   }
   const result = await runListing(c.env, target, method);
   if (c.env.SIGNUPS && result.coinbase) {

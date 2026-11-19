@@ -222,6 +222,10 @@ get a wallet page). USDC can't be pulled from a wallet, so the plan is prepaid: 
 end date forward and is queued for the board's computer, where `x402trust/plans.py` records it in `plans.json`, sends
 the receipt with the transaction link, adds the domain to the payer's alerts, tells the owner, emails one pay link
 five days before the end date and one note when it has ended. No invoices; nothing charges by itself.
+A new plan also gets its listing review on the next run (the Worker's listing check across every route on the
+domain, authenticated with `ALERTS_TOKEN` so it isn't held to the public limit, grouped into what to fix, plus a
+drafted Agentic.Market card request), and every active plan gets a 30-day availability report per endpoint, with
+each failed check, on the first run of the month. The owner gets a copy of each review.
 
 **30-day availability:** every score run also computes, per endpoint, the share of counted checks that answered over
 the last 30 days (`uptime_30d`, `probes_30d`, `history_days`). Seller pages and `seller/<host>.json` show it against

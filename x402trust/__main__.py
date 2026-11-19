@@ -173,9 +173,9 @@ def main(argv=None):
         except Exception as exc:  # sign-ups must never stop the alerts themselves
             print(f"Sign-ups failed: {exc}", file=sys.stderr)
         try:
-            plans.remind()
+            plans.cycle(conn)
         except Exception as exc:
-            print(f"Seller-plan reminders failed: {exc}", file=sys.stderr)
+            print(f"Seller plans failed: {exc}", file=sys.stderr)
     if args.command in ("alerts", "run"):
         alerts.run(conn, dry_run=args.dry_run)
     if args.command == "status":
