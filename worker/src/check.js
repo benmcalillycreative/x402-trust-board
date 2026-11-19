@@ -36,7 +36,10 @@ const norm = (a) => (a || "").trim().toLowerCase();
 /** Is the address the agent is about to pay one the seller has proven is theirs? */
 export function payToCheck(seller, endpoint, payTo) {
   if (!payTo) return null;
-  const proofs = seller?.payout?.proofs || [];
+  const all = seller?.payout?.proofs || [];
+  // DNS decides when it exists: a hijacked web server can rewrite its own proof file, not the DNS.
+  const proofs = all.some((p) => String(p.level || "").startsWith("dns"))
+    ? all.filter((p) => String(p.level || "").startsWith("dns")) : all;
   const proof = proofs.find((p) => norm(p.address) === norm(payTo));
   const strong = proofs.some((p) => p.level !== "manifest");
   return {

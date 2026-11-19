@@ -160,6 +160,31 @@ class Scoring(unittest.TestCase):
         self.assertNotIn("payout_mismatch", flags)
 
 
+class DnsDecides(unittest.TestCase):
+    """Once a domain publishes a DNS proof, a file-only address doesn't count: a hijacked web server can rewrite
+    its own .well-known file and sign it with a wallet of its own, but it can't change the DNS."""
+
+    def test_file_only_address_does_not_count_when_dns_exists(self):
+        import sqlite3
+        conn = sqlite3.connect(":memory:")
+        conn.executescript(payout.SCHEMA)
+        rows = [("api.example.com", "dns", "example.com", ADDR, "2026-11-04", "wallet", ""),
+                ("api.example.com", "site", "api.example.com", OTHER, "2026-11-19", "wallet", ""),  # attacker's file entry
+                ("api.example.com", "site", "api.example.com", ADDR, "2026-11-04", "unsigned", ""),
+                ("api.other.com", "site", "api.other.com", OTHER, "2026-11-04", "wallet", "")]  # file-only seller
+        conn.executemany("INSERT INTO payout_proofs (host, source, domain, address, issued, signer, detail) "
+                         "VALUES (?,?,?,?,?,?,?)", rows)
+        levels = payout.load(conn)
+        self.assertEqual(levels["api.example.com"], {ADDR: "dns_signed"})
+        self.assertEqual(levels["api.other.com"], {OTHER: "site_signed"}, "file-only sellers keep their file proof")
+        c = Context.__new__(Context)
+        c.wallet_domains, c.rotating_hosts, c.payout = defaultdict(set), set(), levels
+        ep = {"host": "api.example.com", "resource": "https://api.example.com/x", "catalog_json": json.dumps(
+            {"accepts": [{"scheme": "exact", "network": "eip155:8453", "amount": "1000", "payTo": ADDR}]})}
+        flags = wallet_flags(ep, [{"quoted_pay_to": OTHER, "quoted_network": "eip155:8453"}], c)
+        self.assertEqual(flags, {"payout_mismatch"}, "the attacker's self-signed file entry doesn't clear the check")
+
+
 class CheckHost(unittest.TestCase):
     """Serve a real .well-known file locally and run the whole check."""
 

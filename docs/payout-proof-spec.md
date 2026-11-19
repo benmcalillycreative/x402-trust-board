@@ -132,7 +132,11 @@ fix it.
 
 Given a 402 response with `payTo = P` for a resource on host `H`:
 
-1. Collect proofs for `H` (sections 3.1 and 3.2). Cache for at most 24 hours.
+1. Collect proofs for `H` (sections 3.1 and 3.2). Cache for at most 24 hours. **DNS decides when it exists:**
+   if the domain publishes any DNS proof, only addresses in DNS count, and a well-known file entry for any
+   other address is ignored. Whoever takes over the web server can rewrite that file and sign it with a
+   wallet of their own; they can't change the DNS. The file is for sellers who can't publish DNS (shared
+   hosting), and verifiers should label it as the weaker level.
 2. If no proofs exist: proceed under the client's normal policy. Absence proves nothing.
 3. If `P` is in the proofs: proceed. Clients MAY show the level.
 4. If proofs exist and `P` is **not** among them: this is a **payout mismatch**. Clients SHOULD NOT pay
@@ -186,6 +190,13 @@ Exceptions verifiers should handle:
   the web server.
 - **DNS compromise:** defeated by requiring a signature (`dns_signed`), since the attacker would also
   need the payout wallet's key, at which point they already control the funds.
+- **Server compromise plus a self-signed file:** an attacker who controls the web server can publish their
+  own address in the well-known file, signed by their own wallet. That's why DNS takes precedence (section 6,
+  step 1): with a DNS proof in place, a file-only address is a mismatch, not a match.
+- **Where the signing key lives:** the signature comes from the payout wallet itself, not from a key on the
+  API server. Receiving x402 payments never needs that key (the facilitator settles to the address), so it
+  belongs off the request path entirely: cold storage, a hardware wallet or a multisig. Signing a proof is a
+  one-time, offline step, repeated only when rotating.
 - **Replay across domains:** the signed message names the domain; a signature for `a.com` does not
   verify for `b.com`.
 - **Lookalike domains:** proofs bind an address to a domain, not to a brand. Clients still need to call

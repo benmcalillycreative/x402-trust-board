@@ -1,6 +1,6 @@
 {
   "name": "x402-trust-guard",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Check an x402 seller before your agent pays it: blocks switched or burn wallets, big overcharges and payout addresses the seller never proved. One line on top of @x402/fetch.",
   "type": "module",
   "main": "index.js",

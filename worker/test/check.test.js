@@ -66,3 +66,16 @@ test("stale data never says ok", () => {
   assert.equal(v.data_age_hours, 30);
   assert.match(v.reasons.join(" "), /30 hours old/);
 });
+
+test("DNS decides: a file-only address doesn't clear the check when a DNS proof exists", () => {
+  const t = parseTarget("https://api.example.com/x");
+  const A = "0x" + "a1".repeat(20), X = "0x" + "e6".repeat(20);
+  const seller = { generated_at: new Date().toISOString(), grade: "A",
+    payout: { proofs: [{ address: A, level: "dns_signed" }, { address: X, level: "site_signed" }] },
+    endpoints: [{ resource: t.url, grade: "A", flags: [] }] };
+  const v = verdict(t, seller, X, "https://settlewatch.com/");
+  assert.equal(v.verdict, "avoid");
+  assert.equal(v.pay_to.contradicts_seller_proof, true);
+  const fileOnly = { ...seller, payout: { proofs: [{ address: X, level: "site_signed" }] } };
+  assert.equal(verdict(t, fileOnly, X, "https://settlewatch.com/").pay_to.proven_by_seller, "site_signed");
+});

@@ -341,9 +341,13 @@ def run(conn=None, hosts=None, log=print):
 
 
 def load(conn):
-    """{host: {address: level}}, keeping the strongest proof per address."""
+    """{host: {address: level}}, keeping the strongest proof per address.
+
+    DNS decides when it exists: once a host has a DNS proof, an address that appears only in the
+    well-known file or the manifest doesn't count. Whoever takes over the web server can rewrite
+    the file (and sign it with a wallet of their own), but not the domain's DNS."""
     conn.executescript(SCHEMA)
-    out = {}
+    out, in_dns = {}, {}
     for r in conn.execute("SELECT host, source, address, signer FROM payout_proofs"):
         if r[3] == "invalid":
             continue  # a broken signature proves nothing either way; don't count the claim
@@ -352,9 +356,13 @@ def load(conn):
             level = "manifest"
         else:
             level = ("dns" if r[1] == "dns" else "site") + ("_signed" if signed else "")
+        if r[1] == "dns":
+            in_dns.setdefault(r[0], set()).add(r[2])
         cur = out.setdefault(r[0], {}).get(r[2])
         if cur is None or LEVELS[level] > LEVELS[cur]:
             out[r[0]][r[2]] = level
+    for host, addrs in in_dns.items():
+        out[host] = {a: lv for a, lv in out[host].items() if a in addrs}
     return out
 
 
