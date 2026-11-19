@@ -123,6 +123,7 @@ class Availability(unittest.TestCase):
         self.assertIn("coinbase/cdp-sdk", html_text)
         self.assertIn("listing.html", pages.pro_page())
         self.assertIn("99%", pages.pro_page())
+        self.assertIn("$11.99 a month", pages.pro_page())
 
 
 if __name__ == "__main__":
