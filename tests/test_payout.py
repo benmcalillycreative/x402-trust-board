@@ -185,6 +185,60 @@ class DnsDecides(unittest.TestCase):
         self.assertEqual(flags, {"payout_mismatch"}, "the attacker's self-signed file entry doesn't clear the check")
 
 
+class FileRotationHold(unittest.TestCase):
+    """Without DNS, a new address in the site file waits HOLD_HOURS before it counts, if the host already had a
+    proven address: a hijacked server can rewrite and re-sign the file, so the board keeps trusting the old one."""
+
+    def setUp(self):
+        import sqlite3
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.executescript(payout.SCHEMA)
+
+    def check(self, host, entries, now):
+        payout.save(self.conn, host, [{"source": s, "domain": host, "address": a, "issued": "2026-11-01",
+                                       "signer": signer, "detail": ""} for s, a, signer in entries], "", now=now)
+
+    def test_swapped_file_address_is_held_then_counts(self):
+        self.check("api.shop.com", [("site", ADDR, "wallet")], "2026-11-10T00:00:00Z")
+        self.check("api.shop.com", [("site", ADDR, "wallet")], "2026-11-18T00:00:00Z")
+        self.check("api.shop.com", [("site", OTHER, "wallet")], "2026-11-19T00:00:00Z")  # file rewritten
+        self.assertEqual(payout.load(self.conn, "2026-11-19T01:00:00Z")["api.shop.com"], {ADDR: "site_signed"})
+        self.assertEqual(payout.held(self.conn, "2026-11-19T01:00:00Z"), {"api.shop.com": [OTHER]})
+        c = Context.__new__(Context)
+        c.wallet_domains, c.rotating_hosts = defaultdict(set), set()
+        c.payout = payout.load(self.conn, "2026-11-19T01:00:00Z")
+        ep = {"host": "api.shop.com", "resource": "https://api.shop.com/x", "catalog_json": json.dumps(
+            {"accepts": [{"scheme": "exact", "network": "eip155:8453", "amount": "1000", "payTo": OTHER}]})}
+        self.assertEqual(wallet_flags(ep, [{"quoted_pay_to": OTHER, "quoted_network": "eip155:8453"}], c),
+                         {"payout_mismatch"})
+        later = payout.load(self.conn, "2026-11-22T00:00:01Z")["api.shop.com"]
+        self.assertEqual(later, {OTHER: "site_signed"}, "after the hold the new address counts, the old one is gone")
+        self.assertEqual(payout.held(self.conn, "2026-11-22T00:00:01Z"), {})
+
+    def test_added_address_is_held_too(self):
+        self.check("api.shop.com", [("site", ADDR, "wallet")], "2026-11-10T00:00:00Z")
+        self.check("api.shop.com", [("site", ADDR, "wallet"), ("site", OTHER, "wallet")], "2026-11-19T00:00:00Z")
+        self.assertEqual(payout.load(self.conn, "2026-11-19T01:00:00Z")["api.shop.com"], {ADDR: "site_signed"})
+
+    def test_first_proof_and_fresh_upgrade_are_not_held(self):
+        self.check("api.new.com", [("site", OTHER, "wallet")], "2026-11-19T00:00:00Z")
+        self.assertEqual(payout.load(self.conn, "2026-11-19T01:00:00Z")["api.new.com"], {OTHER: "site_signed"})
+        # Already on the board before this table existed: first check after the update sets a baseline, no hold.
+        self.check("api.old.com", [("site", ADDR, "wallet")], "2026-11-19T00:00:00Z")
+        self.assertEqual(payout.load(self.conn, "2026-11-19T01:00:00Z")["api.old.com"], {ADDR: "site_signed"})
+
+    def test_stale_anchor_does_not_hold(self):
+        self.check("api.shop.com", [("site", ADDR, "wallet")], "2026-09-01T00:00:00Z")
+        self.check("api.shop.com", [], "2026-09-02T00:00:00Z")  # took the file down for months
+        self.check("api.shop.com", [("site", OTHER, "wallet")], "2026-11-19T00:00:00Z")
+        self.assertEqual(payout.load(self.conn, "2026-11-19T01:00:00Z")["api.shop.com"], {OTHER: "site_signed"})
+
+    def test_dns_rotation_is_not_held(self):
+        self.check("api.shop.com", [("dns", ADDR, "wallet")], "2026-11-10T00:00:00Z")
+        self.check("api.shop.com", [("dns", OTHER, "wallet")], "2026-11-19T00:00:00Z")
+        self.assertEqual(payout.load(self.conn, "2026-11-19T01:00:00Z")["api.shop.com"], {OTHER: "dns_signed"})
+
+
 class CheckHost(unittest.TestCase):
     """Serve a real .well-known file locally and run the whole check."""
 

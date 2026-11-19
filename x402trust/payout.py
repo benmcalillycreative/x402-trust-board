@@ -86,7 +86,24 @@ CREATE TABLE IF NOT EXISTS payout_proofs (
     detail      TEXT,
     PRIMARY KEY (host, source, address)
 );
+CREATE TABLE IF NOT EXISTS payout_seen (
+    host        TEXT NOT NULL,      -- every address a host's proof has counted, kept after it's gone
+    address     TEXT NOT NULL,
+    source      TEXT NOT NULL,      -- site | dns | manifest
+    level       TEXT NOT NULL,      -- the level it had (see LEVELS)
+    first_seen  TEXT NOT NULL,
+    last_seen   TEXT NOT NULL,
+    PRIMARY KEY (host, address, source)
+);
 """
+
+# A new address in a host's .well-known file only counts after this long, if the host already had a proven
+# address before it. Whoever takes over a web server can rewrite the file and sign it with a wallet of their
+# own; holding the new address means the board keeps trusting the old one (so quotes of the new one show as
+# a mismatch) while watchers get the wallet-change alert. DNS proofs aren't held: changing DNS takes control
+# of the domain, which is the whole point of them. First-time proofs aren't held either (nothing to compare).
+HOLD_HOURS = 72
+ANCHOR_DAYS = 30  # an earlier address only anchors the host if a check saw it this recently
 
 
 # ---------- proof checking ----------
@@ -315,12 +332,28 @@ def due_hosts(conn):
     return [r[0].split(":")[0] for r in rows]
 
 
-def save(conn, host, proofs, summary):
+def level_of(source, signer):
+    """The proof level for one stored proof, or None if it proves nothing."""
+    if signer == "invalid":
+        return None  # a broken signature proves nothing either way; don't count the claim
+    if source == "manifest":
+        return "manifest"
+    return ("dns" if source == "dns" else "site") + ("_signed" if signer in ("wallet", "contract") else "")
+
+
+def save(conn, host, proofs, summary, now=None):
+    now = now or db.now()
     conn.execute("DELETE FROM payout_proofs WHERE host=?", (host,))
     for p in proofs:
         conn.execute("INSERT OR REPLACE INTO payout_proofs VALUES (?,?,?,?,?,?,?)",
                      (host, p["source"], p["domain"], p["address"], p["issued"], p["signer"], p["detail"]))
-    conn.execute("INSERT OR REPLACE INTO payout_checks VALUES (?,?,?)", (host, db.now(), summary))
+        level = level_of(p["source"], p["signer"])
+        if level:
+            conn.execute(
+                """INSERT INTO payout_seen VALUES (?,?,?,?,?,?)
+                   ON CONFLICT (host, address, source) DO UPDATE SET level=excluded.level, last_seen=excluded.last_seen""",
+                (host, p["address"], p["source"], level, now, now))
+    conn.execute("INSERT OR REPLACE INTO payout_checks VALUES (?,?,?)", (host, now, summary))
 
 
 def run(conn=None, hosts=None, log=print):
@@ -340,29 +373,62 @@ def run(conn=None, hosts=None, log=print):
     return found
 
 
-def load(conn):
+def load(conn, now=None):
     """{host: {address: level}}, keeping the strongest proof per address.
 
     DNS decides when it exists: once a host has a DNS proof, an address that appears only in the
     well-known file or the manifest doesn't count. Whoever takes over the web server can rewrite
-    the file (and sign it with a wallet of their own), but not the domain's DNS."""
+    the file (and sign it with a wallet of their own), but not the domain's DNS.
+
+    Without DNS, a file address that's new on a host that already had a proven address is held for
+    HOLD_HOURS: the earlier addresses keep counting instead (see HOLD_HOURS)."""
     conn.executescript(SCHEMA)
     out, in_dns = {}, {}
-    for r in conn.execute("SELECT host, source, address, signer FROM payout_proofs"):
-        if r[3] == "invalid":
-            continue  # a broken signature proves nothing either way; don't count the claim
-        signed = r[3] in ("wallet", "contract")
-        if r[1] == "manifest":
-            level = "manifest"
-        else:
-            level = ("dns" if r[1] == "dns" else "site") + ("_signed" if signed else "")
-        if r[1] == "dns":
-            in_dns.setdefault(r[0], set()).add(r[2])
-        cur = out.setdefault(r[0], {}).get(r[2])
+    for host, source, address, signer in conn.execute("SELECT host, source, address, signer FROM payout_proofs"):
+        level = level_of(source, signer)
+        if not level:
+            continue
+        if source == "dns":
+            in_dns.setdefault(host, set()).add(address)
+        cur = out.setdefault(host, {}).get(address)
         if cur is None or LEVELS[level] > LEVELS[cur]:
-            out[r[0]][r[2]] = level
+            out[host][address] = level
     for host, addrs in in_dns.items():
         out[host] = {a: lv for a, lv in out[host].items() if a in addrs}
+    now = datetime.strptime(now or db.now(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    hold_from = (now - timedelta(hours=HOLD_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for host in [h for h in out if h not in in_dns]:
+        seen = conn.execute("SELECT address, level, first_seen, last_seen FROM payout_seen WHERE host=? AND source='site'",
+                            (host,)).fetchall()
+        first = {}
+        for address, _level, first_seen, _last in seen:
+            first[address] = min(first.get(address, first_seen), first_seen)
+        held = {a for a in out[host] if first.get(a, "") >= hold_from}
+        if not held:
+            continue
+        start = min(first[a] for a in held)
+        anchor_from = (datetime.strptime(start, "%Y-%m-%dT%H:%M:%SZ") - timedelta(days=ANCHOR_DAYS)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+        anchors = {a: lv for a, lv, fs, ls in seen if a not in held and fs < start and ls >= anchor_from}
+        if not anchors:
+            continue  # first proof this host has published: nothing to compare against
+        kept = {a: lv for a, lv in out[host].items() if a not in held}
+        for a, lv in anchors.items():
+            if a not in kept or LEVELS[lv] > LEVELS[kept[a]]:
+                kept[a] = lv
+        out[host] = kept
+    return out
+
+
+def held(conn, now=None):
+    """{host: [address, ...]} for file addresses load() is holding right now (for `payout HOST` and pages)."""
+    conn.executescript(SCHEMA)
+    counted = load(conn, now)
+    with_dns = {h for (h,) in conn.execute("SELECT DISTINCT host FROM payout_proofs WHERE source='dns'")}
+    out = {}
+    for host, address, signer in conn.execute("SELECT host, address, signer FROM payout_proofs WHERE source='site'"):
+        if host not in with_dns and level_of("site", signer) and address not in counted.get(host, {}):
+            out.setdefault(host, []).append(address)
     return out
 
 
@@ -377,4 +443,7 @@ def describe(conn, host):
                    "unsigned": "declared, not signed", "invalid": "signature INVALID",
                    "unverifiable": "can't check signature"}[r[4]]
         lines.append(f"  {r[0]:<8} {r[2]}  {verdict}" + (f": {r[5]}" if r[5] else ""))
+    for address in held(conn).get(host, []):
+        lines.append(f"  HELD     {address}  new in the site file; counts {HOLD_HOURS}h after first seen "
+                     "(the earlier address keeps counting until then)")
     return "\n".join(lines)

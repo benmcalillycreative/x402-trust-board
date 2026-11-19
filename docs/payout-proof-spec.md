@@ -182,6 +182,9 @@ Exceptions verifiers should handle:
 - TTL: 3600 seconds is a sensible default. Lower it (to 300, say) a day before a planned change and
   raise it again after.
 - To revoke: remove the record or entry. Verifiers SHOULD re-check at least daily.
+- File-only sellers: a verifier that keeps history MAY hold a new address in the well-known file for a
+  while (Settle Watch: 72 hours) when the host already had a proven address, trusting the old one until
+  then. DNS rotations aren't held. A seller who needs instant rotation should publish DNS.
 - There is no expiry field: a stale proof is removed, not timed out.
 
 ## 8. Security considerations
@@ -192,7 +195,10 @@ Exceptions verifiers should handle:
   need the payout wallet's key, at which point they already control the funds.
 - **Server compromise plus a self-signed file:** an attacker who controls the web server can publish their
   own address in the well-known file, signed by their own wallet. That's why DNS takes precedence (section 6,
-  step 1): with a DNS proof in place, a file-only address is a mismatch, not a match.
+  step 1): with a DNS proof in place, a file-only address is a mismatch, not a match. A seller with no DNS
+  proof has no such anchor, so the best a verifier can do is notice the change: hold the new file address
+  (section 7) and alert the people watching that seller. Publishing a DNS record is the real fix, and it
+  takes effect for that seller on the next check, with no migration step.
 - **Where the signing key lives:** the signature comes from the payout wallet itself, not from a key on the
   API server. Receiving x402 payments never needs that key (the facilitator settles to the address), so it
   belongs off the request path entirely: cold storage, a hardware wallet or a multisig. Signing a proof is a
