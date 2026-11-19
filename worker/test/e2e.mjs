@@ -10,6 +10,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/client";
 const PAY_TO = "0x" + "c3".repeat(20);
 const A = "0x" + "a1".repeat(20);
 const calls = [];
+let failSettle = false;
 const SELLER = {
   host: "api.example.com", name: "Example", grade: "B", average_score: 78, generated_at: new Date().toISOString(),
   endpoints_total: 1, red_flag_endpoints: 0, payout: { verified: true, best_level: "dns_signed", proofs: [{ address: A, level: "dns_signed" }] },
@@ -40,6 +41,7 @@ const fake = http.createServer((req, res) => {
     const p = body ? JSON.parse(body) : {};
     const payer = p.paymentPayload?.payload?.authorization?.from;
     if (req.url === "/fac/verify") return json(200, { isValid: true, payer });
+    if (req.url === "/fac/settle" && failSettle) return json(200, { success: false, errorReason: "insufficient_funds", transaction: "", network: "eip155:8453", payer });
     if (req.url === "/fac/settle") return json(200, { success: true, transaction: "0x" + "ee".repeat(32), network: "eip155:8453", payer });
     json(404, {});
   });
@@ -171,6 +173,66 @@ try {
   const lt = await call({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "check_listing", arguments: { url: "https://api.example.com/broken" } } });
   assert.match(lt.result.content[0].text, /Not listed/);
   console.log("listing check OK");
+
+  // Seller plan, paid in USDC via x402: start -> pay link -> settled -> recorded -> queued for the board.
+  const start = (f) => fetch(`${W}/v1/plan/start`, { method: "POST", redirect: "manual", body: new URLSearchParams(f) });
+  assert.equal((await start({ email: "nope", host: "api.example.com" })).status, 400);
+  assert.equal((await start({ email: "dev@example.com", host: "never.example" })).status, 404, "only domains the board tracks");
+  const st = await start({ email: "Dev@Example.com", host: "https://API.example.com/x", months: "3" });
+  assert.equal(st.status, 303);
+  const payPath = st.headers.get("location");
+  assert.match(payPath, /^\/v1\/plan\/pay\?p=[a-f0-9]{24}&months=3$/);
+  const pid = payPath.match(/p=([a-f0-9]{24})/)[1];
+  assert.equal((await fetch(`${W}/v1/plan/pay?p=${"0".repeat(24)}&months=1`)).status, 404, "unknown plan: refused before the paywall");
+  const p402 = await fetch(`${W}${payPath}`);
+  assert.equal(p402.status, 402);
+  const preq = JSON.parse(Buffer.from(p402.headers.get("payment-required"), "base64").toString());
+  assert.equal(preq.accepts[0].amount, "35970000", "3 months at $11.99");
+  assert.equal(preq.accepts[0].payTo.toLowerCase(), PAY_TO);
+  assert.ok(!preq.extensions?.bazaar, "the plan isn't declared for the Bazaar");
+  const wallet = await fetch(`${W}${payPath}`, { headers: { accept: "text/html", "user-agent": "Mozilla/5.0" } });
+  assert.equal(wallet.status, 402);
+  assert.match(wallet.headers.get("content-type"), /text\/html/);
+  assert.ok((await wallet.text()).length > 100000, "browsers get the wallet page");
+  let ps = await (await fetch(`${W}/v1/plan/status?p=${pid}`)).json();
+  assert.deepEqual([ps.host, ps.active, ps.paid_until], ["api.example.com", false, null]);
+  assert.ok(!("email" in ps), "status never shows the email");
+
+  // x402 clients cap a payment at $1 unless told otherwise; a seller paying from code raises it.
+  const bigClient = x402Client.fromConfig({ schemes: [{ network: "eip155:*", client: new ExactEvmScheme(account) }], spendControls: false });
+  const payBig = wrapFetchWithPayment(fetch, bigClient);
+  failSettle = true;
+  const failed = await payBig(`${W}${payPath}`);
+  assert.equal(failed.status, 402, "settlement failed: not charged");
+  assert.equal((await (await fetch(`${W}/v1/plan/status?p=${pid}`)).json()).paid_until, null, "and nothing recorded");
+  failSettle = false;
+
+  const paid = await payBig(`${W}${payPath}`, { headers: { accept: "application/json" } });
+  const pj = await paid.json();
+  assert.equal(paid.status, 200, JSON.stringify(pj));
+  assert.equal(pj.amount, "$35.97");
+  const until = new Date(pj.paid_until);
+  assert.ok(until - Date.now() > 88 * 86400e3 && until - Date.now() < 93 * 86400e3, pj.paid_until);
+  ps = await (await fetch(`${W}/v1/plan/status?p=${pid}`)).json();
+  assert.equal(ps.active, true);
+  assert.equal(ps.paid_until, pj.paid_until);
+  q = (await (await fetch(`${W}/v1/alerts/queue`, { headers: H })).json()).items;
+  const pays = q.filter((i) => i.kind === "payment");
+  assert.equal(pays.length, 1, "exactly one payment queued (the failed one isn't)");
+  assert.deepEqual([pays[0].host, pays[0].email, pays[0].months, pays[0].amount, pays[0].previous_until],
+    ["api.example.com", "dev@example.com", 3, "$35.97", null]);
+  assert.equal(pays[0].tx, "0x" + "ee".repeat(32));
+  assert.equal(pays[0].payer.toLowerCase(), account.address.toLowerCase());
+  // Renewing early adds on top of the current end date.
+  const again = await (await payBig(`${W}/v1/plan/pay?p=${pid}&months=1`, { headers: { accept: "application/json" } })).json();
+  const d = new Date(pj.paid_until); d.setUTCMonth(d.getUTCMonth() + 1);
+  assert.equal(again.paid_until.slice(0, 10), d.toISOString().slice(0, 10));
+  const html = await (await payBig(`${W}/v1/plan/pay?p=${pid}&months=1`)).text();
+  assert.match(html, /Paid, thank you/);
+  assert.equal((await fetch(`${W}/v1/alerts/ack`, { method: "POST", headers: H, body: JSON.stringify({ key: pays[0].key, state: "done" }) })).status, 200);
+  q = (await (await fetch(`${W}/v1/alerts/queue`, { headers: H })).json()).items;
+  assert.equal(q.filter((i) => i.kind === "payment").length, 2);
+  console.log("seller plan OK:", pj.paid_until);
   console.log("e2e passed");
   done(0);
 } catch (e) {

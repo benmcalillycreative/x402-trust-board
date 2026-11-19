@@ -10,6 +10,8 @@
 //   GET  /v1/alerts/stop?e=&m=&s=  one-click unsubscribe     (public, HMAC-signed by the board)
 //   GET  /v1/alerts/queue       pending work for the board   (Bearer ALERTS_TOKEN)
 //   POST /v1/alerts/ack         {key, state}                 (Bearer ALERTS_TOKEN)
+//
+// The queue also carries seller-plan payments (b:, kind "payment"), written by plan.js.
 
 import { Hono } from "hono";
 
@@ -131,13 +133,13 @@ signups.get("/stop", async (c) => {
 signups.get("/queue", async (c) => {
   if (!authed(c)) return c.json({ error: "unauthorized" }, 401);
   const out = [];
-  for (const prefix of ["p:", "s:", "i:"]) {
+  for (const prefix of ["p:", "s:", "i:", "b:"]) {
     let cursor;
     do {
       const page_ = await c.env.SIGNUPS.list({ prefix, cursor });
       for (const k of page_.keys) {
         const v = await c.env.SIGNUPS.get(k.name);
-        if (v) out.push({ key: k.name, ...JSON.parse(v), kind: { "p:": "signup", "s:": "stop", "i:": "interest" }[prefix] });
+        if (v) out.push({ key: k.name, ...JSON.parse(v), kind: { "p:": "signup", "s:": "stop", "i:": "interest", "b:": "payment" }[prefix] });
       }
       cursor = page_.list_complete ? null : page_.cursor;
     } while (cursor);
@@ -148,7 +150,7 @@ signups.get("/queue", async (c) => {
 signups.post("/ack", async (c) => {
   if (!authed(c)) return c.json({ error: "unauthorized" }, 401);
   const { key, state } = await c.req.json().catch(() => ({}));
-  if (!/^[psi]:[a-f0-9]{16,64}$/.test(key || "")) return c.json({ error: "bad key" }, 400);
+  if (!/^[psib]:[a-f0-9]{16,64}$/.test(key || "")) return c.json({ error: "bad key" }, 400);
   if (state === "done") {
     await c.env.SIGNUPS.delete(key);
   } else if (state === "mailed") {

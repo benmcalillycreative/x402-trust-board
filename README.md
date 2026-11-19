@@ -216,6 +216,13 @@ in the Bazaar?". It runs Coinbase's public validator (`POST /platform/v2/x402/va
 looks the payout address up in Coinbase's merchant list (`/platform/v2/x402/discovery/merchant`), adds the board's
 30-day availability, and returns findings with a fix for each. 30 checks a day per IP, cached 10 minutes per URL.
 
+**Seller plan, paid in USDC:** `pro.html` posts to `POST /v1/plan/start`, which sends the seller to
+`GET /v1/plan/pay?p=<plan id>&months=1|3|12`, an x402 route at $11.99 a month paid to the same `PAY_TO` (browsers
+get a wallet page). USDC can't be pulled from a wallet, so the plan is prepaid: each settled payment moves the plan's
+end date forward and is queued for the board's computer, where `x402trust/plans.py` records it in `plans.json`, sends
+the receipt with the transaction link, adds the domain to the payer's alerts, tells the owner, emails one pay link
+five days before the end date and one note when it has ended. No invoices; nothing charges by itself.
+
 **30-day availability:** every score run also computes, per endpoint, the share of counted checks that answered over
 the last 30 days (`uptime_30d`, `probes_30d`, `history_days`). Seller pages and `seller/<host>.json` show it against
 Coinbase's bar for featured listings (99% over 30 days), and watchers get an alert when an endpoint crosses that bar.

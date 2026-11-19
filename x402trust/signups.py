@@ -4,7 +4,8 @@ Someone fills in the form on a seller page; the Worker stores the request. Each 
 module pulls the queue and:
   - emails a confirmation link for new requests (from the same address as the alerts),
   - adds a watcher once the link has been clicked,
-  - removes a watcher when someone used the one-click unsubscribe link.
+  - removes a watcher when someone used the one-click unsubscribe link,
+  - records seller-plan payments (USDC via x402) and sends the receipts (see plans.py).
 Nothing is watched until the person who owns the address confirms it.
 """
 
@@ -15,7 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from . import alerts, config
+from . import alerts, config, plans
 
 
 def ready():
@@ -72,13 +73,22 @@ def run(log=print):
     except (urllib.error.URLError, OSError, ValueError) as exc:
         log(f"Sign-ups: couldn't reach {config.API_URL}: {exc}")
         return None
-    mailed = added = stopped = leads = 0
+    mailed = added = stopped = leads = paid = 0
     watching = {(w["email"].lower(), w["match"]) for w in alerts.load_watchers()}
+    book = plans.load()
     for it in items:
         key, kind, state = it.get("key"), it.get("kind"), it.get("state")
         email = (it.get("email") or "").strip().lower()
         try:
-            if kind == "interest":
+            if kind == "payment":
+                try:
+                    receipted = plans.handle(book, it, watching, log=log)
+                finally:
+                    plans.save(book)  # recorded even if the receipt has to wait for the next run
+                if receipted:
+                    _call("ack", {"key": key, "state": "done"})
+                paid += 1
+            elif kind == "interest":
                 owner = config.ALERT_FROM or config.SMTP_USER
                 if owner:
                     body = (f"Someone asked about the seller plan.\n\nEmail: {email}\nService: {it.get('host') or '-'}\n"
@@ -109,5 +119,5 @@ def run(log=print):
         except (urllib.error.URLError, OSError, ValueError) as exc:
             log(f"Sign-ups: {key}: {exc}")
     log(f"Sign-ups: {mailed} confirmation(s) sent, {added} watcher(s) added, {stopped} unsubscribe(s), "
-        f"{leads} seller-plan lead(s) forwarded")
-    return {"mailed": mailed, "added": added, "stopped": stopped, "leads": leads}
+        f"{leads} seller-plan lead(s) forwarded, {paid} plan payment(s) recorded")
+    return {"mailed": mailed, "added": added, "stopped": stopped, "leads": leads, "paid": paid}

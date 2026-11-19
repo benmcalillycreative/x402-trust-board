@@ -17,6 +17,8 @@ import { signups } from "./signups.js";
 import { mcp } from "./mcp.js";
 import { openapi, wellKnown } from "./openapi.js";
 import { ICON_PNG_BASE64 } from "./icon.js";
+import { registerPlan, planRoute } from "./plan.js";
+import { evmPaywall } from "@x402/paywall/evm";
 import { analyze, findPayTo, parseListingInput, LISTING_FREE_PER_DAY } from "./listing.js";
 
 const BASE = "eip155:8453";
@@ -62,8 +64,19 @@ function routes(env) {
         body: { error: `Payment required: ${priceOf(env)} USDC on Base via x402.`, docs: "/" },
       }),
     },
+    "GET /v1/plan/pay": planRoute(env, BASE),
   };
 }
+
+// People who open a paid link in a browser get a wallet page instead of a bare 402. Only the EVM
+// handler is bundled (the package's root export carries every chain and is several MB).
+const PAYWALL_CONFIG = { appName: "Settle Watch", appLogo: "https://api.settlewatch.com/icon.png" };
+const walletPage = {
+  generateHtml(paymentRequired, config) {
+    const req = (paymentRequired.accepts || []).find((a) => evmPaywall.supports(a)) || paymentRequired.accepts?.[0];
+    return evmPaywall.generateHtml(req, paymentRequired, { ...PAYWALL_CONFIG, ...config });
+  },
+};
 
 let payment; // built once per isolate: env doesn't change between requests
 
@@ -74,7 +87,7 @@ function paywall(env) {
       : new HTTPFacilitatorClient(createFacilitatorConfig(env.CDP_API_KEY_ID, env.CDP_API_KEY_SECRET));
     const server = new x402ResourceServer(fac).register(BASE, new ExactEvmScheme());
     server.registerExtension(bazaarResourceServerExtension);
-    payment = paymentMiddleware(routes(env), server);
+    payment = paymentMiddleware(routes(env), server, PAYWALL_CONFIG, walletPage);
   }
   return payment;
 }
@@ -204,6 +217,7 @@ app.get("/", (c) =>
     data: "Free bulk data: scores.json, payouts.json and seller/<host>.json on the board",
     mcp: "Remote MCP server at /mcp (tools: check_payment, check_listing), free up to 100 checks a day",
     listing: "For sellers, free: GET /v1/listing?url=<your endpoint>[&method=POST] explains why it is or isn't in the Bazaar",
+    seller_plan: `${c.env.BOARD_URL}pro.html (paid in USDC on Base via x402, prepaid by the month)`,
   })
 );
 
@@ -213,6 +227,9 @@ app.get("/icon.png", (c) => c.body(ICON, 200, { "content-type": "image/png", "ca
 app.get("/v1/health", (c) => c.json({ ok: true, payTo: c.env.PAY_TO || null }));
 
 app.route("/v1/alerts", signups);
+
+// The seller plan, paid in USDC through the same x402 middleware (see plan.js).
+registerPlan(app, paywall);
 
 // Discovery documents for directories such as x402scan.
 app.get("/openapi.json", (c) => c.json(openapi(c.env, new URL(c.req.url).origin, priceOf(c.env))));

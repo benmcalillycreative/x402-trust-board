@@ -12,7 +12,7 @@ import json
 import re
 from collections import Counter, defaultdict
 
-from . import config, db, notes, payout
+from . import config, db, notes, payout, plans
 from .score import FLAG_TEXT, grade_for, severity
 
 BOARD = "https://settlewatch.com/"
@@ -96,9 +96,11 @@ text-align:left;vertical-align:top;font-size:14px}th{font-size:12px;text-transfo
 .chip.good{background:var(--goodbg);color:var(--good)}code{font-size:12px;word-break:break-all}
 .g{font-weight:700}.muted{color:var(--muted)}textarea{width:100%;font:12px ui-monospace,monospace;padding:8px;
 border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
-form.alert{display:flex;gap:8px;flex-wrap:wrap}form.alert input[type=email],form.alert input[type=text],form.alert textarea{flex:1 1 220px;padding:8px 10px;
+form.alert{display:flex;gap:8px;flex-wrap:wrap}form.alert input[type=email],form.alert input[type=text],form.alert textarea,form.alert select{flex:1 1 220px;padding:8px 10px;
 border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
 form.alert button{padding:8px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
+form.alert.stack{flex-direction:column;align-items:stretch}form.alert.stack input,form.alert.stack textarea,form.alert.stack select,form.alert.stack button{flex:0 0 auto}
+details{margin-top:12px}details summary{cursor:pointer}details form.alert{margin-top:8px}
 .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 """
 
@@ -358,15 +360,30 @@ never how it is graded. A seller who thinks a finding is wrong can reply to any 
 
 
 def pro_page():
-    """The seller plan: what sellers get, and a form to ask for early access."""
+    """The seller plan: what sellers get, and the form that leads to an x402 USDC payment (worker/src/plan.js)."""
+    api = esc(config.PUBLIC_API)
+    opts = "".join(f'<option value="{m}"{" selected" if m == 1 else ""}>{m} month{"s" if m > 1 else ""}: '
+                   f'{plans.price(m)}</option>' for m in plans.MONTHS)
     form = (
-        f'<form class="alert" method="post" action="{esc(config.PUBLIC_API)}/v1/alerts/pro" style="flex-direction:column;align-items:stretch">'
+        f'<form class="alert stack" method="post" action="{api}/v1/plan/start">'
+        f'<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'
+        f'<input type="text" name="host" required placeholder="Your domain, e.g. api.example.com" aria-label="Your domain" '
+        f'inputmode="url" pattern="[A-Za-z0-9.:/-]+">'
+        f'<input type="email" name="email" required placeholder="you@example.com" aria-label="Email for receipts and alerts">'
+        f'<select name="months" aria-label="How long">{opts}</select>'
+        f'<button type="submit">Pay with USDC</button></form>'
+        f'<p class="muted">You\'ll get a wallet page for USDC on Base: Coinbase Wallet, MetaMask, Rabby or any wallet that '
+        f'connects in the browser. Paying from code works too (it\'s an x402 endpoint; raise your client\'s $1 default '
+        f'cap). Nothing renews or charges by itself: {plans.REMIND_DAYS} days before the end date we email one link to '
+        f'pay for more time, and paying early adds on top. Don\'t pay it and the plan simply ends; free alerts carry on.</p>'
+        f'<details><summary>Questions first?</summary>'
+        f'<form class="alert stack" method="post" action="{api}/v1/alerts/pro">'
         f'<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'
         f'<input type="email" name="email" required placeholder="you@example.com" aria-label="Email">'
         f'<input type="text" name="host" placeholder="Your service, e.g. api.example.com" aria-label="Your service" '
         f'inputmode="url" pattern="[A-Za-z0-9.:/-]+">'
-        f'<textarea name="note" rows="3" placeholder="Anything we should know (optional)" aria-label="Note"></textarea>'
-        f'<button type="submit">Ask for early access</button></form>'
+        f'<textarea name="note" rows="3" placeholder="Your question" aria-label="Question"></textarea>'
+        f'<button type="submit">Ask</button></form></details>'
     ) if config.PUBLIC_API else '<p>Reply to any board email, or open an issue on the board\'s GitHub, and say which service you run.</p>'
     body = (
         '<p class="muted"><a href="index.html">Settle Watch</a> / For sellers</p>'
@@ -384,7 +401,8 @@ def pro_page():
         '<li>Alerts when an endpoint stops answering, drops out of the Bazaar, falls below 99% over 30 days, or '
         'changes price or wallet</li></ul></div>'
         '<div class="card"><h2>Seller plan: $11.99 a month</h2>'
-        '<p>Per seller: one domain and all of its endpoints. Early access, billed monthly, cancel any time.</p><ul>'
+        '<p>Per seller: one domain and all of its endpoints. Paid in USDC on Base, a month at a time or up to a year '
+        'ahead. No invoices, no card, no subscription to cancel.</p><ul>'
         '<li>Every one of your endpoints checked every cycle, not on the rotating sample, so your availability record '
         'covers all of them</li>'
         '<li>A monthly availability report per endpoint against Coinbase\'s bar for featured listings (99% over 30 days, '
@@ -398,7 +416,7 @@ def pro_page():
         f'{form}</div>'
     )
     return page("For sellers: Settle Watch", body,
-                "What sellers of agent-payable APIs get from Settle Watch, free and Pro.")
+                "What sellers of agent-payable APIs get from Settle Watch, free and on the seller plan.")
 
 
 LISTING_JS = """

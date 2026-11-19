@@ -29,7 +29,7 @@ Alerts
 import argparse
 import sys
 
-from . import (alerts, chain, chain_sol, config, crawl, crawl_circle, crawl_mpp, db, monthly, notes, payout, probe,
+from . import (alerts, chain, chain_sol, config, crawl, crawl_circle, crawl_mpp, db, monthly, notes, payout, plans, probe,
                report, score, signups)
 
 CYCLE = ["crawl", "probe", "payout", "chain", "score", "report", "signups", "alerts", "monthly", "run", "status"]
@@ -172,6 +172,10 @@ def main(argv=None):
             signups.run()
         except Exception as exc:  # sign-ups must never stop the alerts themselves
             print(f"Sign-ups failed: {exc}", file=sys.stderr)
+        try:
+            plans.remind()
+        except Exception as exc:
+            print(f"Seller-plan reminders failed: {exc}", file=sys.stderr)
     if args.command in ("alerts", "run"):
         alerts.run(conn, dry_run=args.dry_run)
     if args.command == "status":
