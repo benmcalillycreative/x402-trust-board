@@ -232,9 +232,9 @@ def seller_page(host, rows, levels, proofs, host_notes, site, onchain):
                 + "".join(trs) + "</tbody></table></div></div>")
     if config.PUBLIC_API:
         body.append(
-            f'<div class="card"><h2>Get alerts</h2><p>One email when an endpoint here stops answering, comes back, '
-            f'drops out of the Bazaar, falls below 99% availability over 30 days, or starts asking a different price '
-            f'or wallet. Nothing otherwise.</p>'
+            f'<div class="card"><h2>Get alerts</h2><p>An email after the next check when an endpoint here stops '
+            f'answering or comes back, asks to be paid at a different wallet, or drops out of the Bazaar. Price changes, '
+            f'new listings and the 99% availability bar come together in one email a day at most. Nothing otherwise.</p>'
             f'<form class="alert" method="post" action="{esc(config.PUBLIC_API)}/v1/alerts/subscribe">'
             f'<input type="hidden" name="host" value="{esc(host)}">'
             f'<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'

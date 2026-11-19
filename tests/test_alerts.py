@@ -19,6 +19,12 @@ NEW = "0x2222222222222222222222222222222222222222"
 USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
 
+def subject(path):
+    import email
+    from email import policy
+    return email.message_from_bytes(path.read_bytes(), policy=policy.default)["Subject"]
+
+
 class Fixture(unittest.TestCase):
     def setUp(self):
         self.old_dir = config.DATA_DIR
@@ -120,21 +126,22 @@ class Alerts(Fixture):
 
         self.assertEqual(len(self.cycle()), 1, "no change means no email")
 
-        # /a fails twice -> down; /b changes wallet; /b changes price.
+        # /a fails twice -> down (urgent); /b changes wallet (urgent) and price (rides along).
         self.probe("/a", outcome="http_error", status=503)
         self.assertEqual(len(self.cycle()), 1, "one failure isn't enough to alert")
         self.probe("/a", outcome="http_error", status=503)
         self.probe("/b", pay_to=NEW, amount="20000")
         self.assertEqual(len(self.cycle()), 2)
         body = self.last_email()
-        self.assertIn("3 changes on api.example.com", body)
-        self.assertIn("Stopped answering (HTTP 503)", body)
-        self.assertIn(f"Now asks for payment to {NEW.lower()}", body)
-        self.assertIn("Now asks $0.02 (was $0.01)", body)
+        self.assertEqual(subject(self.outbox()[-1]),
+                         "Settle Watch alert: 1 endpoint stopped answering, 1 wallet change, 1 price change on api.example.com")
+        self.assertIn("Stopped answering on the last two checks (1):\n  /a (HTTP 503)", body)
+        self.assertIn(f"/b: now {NEW.lower()} (was {GOOD.lower()})", body)
+        self.assertIn("/b: $0.01 -> $0.02", body)
 
         self.probe("/a")
-        self.assertEqual(len(self.cycle()), 3)
-        self.assertIn("Answering again: https://api.example.com/a", self.last_email())
+        self.assertEqual(len(self.cycle()), 3, "coming back is urgent too")
+        self.assertIn("Answering again (1):\n  /a", self.last_email())
 
     def test_rotating_wallets_do_not_alert(self):
         self.cycle()
@@ -189,6 +196,78 @@ class Alerts(Fixture):
             alerts.smtplib.SMTP = real
         state = self.conn.execute("SELECT COUNT(*) FROM alert_state").fetchone()[0]
         self.assertEqual(state, 0, "a failed welcome must be retried, not recorded as delivered")
+
+
+class Bundling(Fixture):
+    """One email per person, a daily digest for small changes, and changes that undo themselves dropped."""
+
+    def setUp(self):
+        super().setUp()
+        for path in ("/a", "/b"):
+            self.probe(path)
+        alerts.watch("owner@example.com", HOST, "Example")
+        self.cycle()  # welcome
+
+    def test_price_changes_wait_for_the_daily_digest_and_net_out(self):
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        self.probe("/b", amount="20000")
+        alerts.run(self.conn, log=lambda *_: None, now=now)
+        self.assertEqual(len(self.outbox()), 1, "a price change alone waits for the digest")
+        self.probe("/b", amount="10000")  # and moves back before the digest goes out
+        self.probe("/a", amount="30000")
+        alerts.run(self.conn, log=lambda *_: None, now=now + timedelta(hours=21))
+        self.assertEqual(len(self.outbox()), 2)
+        body = self.outbox()[-1].read_text()
+        self.assertEqual(subject(self.outbox()[-1]), "Settle Watch daily: 1 price change on api.example.com")
+        self.assertIn("/a: $0.01 -> $0.03", body)
+        self.assertNotIn("/b:", body, "a price that moved and moved back isn't news")
+        self.assertIn("once a day at most", body)
+        alerts.run(self.conn, log=lambda *_: None, now=now + timedelta(hours=22))
+        self.assertEqual(len(self.outbox()), 2, "nothing left waiting")
+
+    def test_two_services_one_email_and_a_welcome_for_the_new_one(self):
+        from datetime import datetime, timedelta, timezone
+        other = "api.other.example"
+        for i in range(25):
+            res = f"https://{other}/r{i}"
+            self.conn.execute("INSERT INTO endpoints (resource, host, first_seen, last_seen, method, network, asset, "
+                              "pay_to, listed_amount, listed_usd, l30_payers, catalog_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                              (res, other, "2026-10-29T00:00:00Z", "2026-10-29T00:00:00Z", "GET", "eip155:8453",
+                               USDC, GOOD, "10000", 0.01, 1, "{}"))
+        self.conn.commit()
+        alerts.watch("owner@example.com", other, "Example")
+        self.cycle()
+        mails = [m.read_text() for m in self.outbox()]
+        self.assertEqual(len(mails), 2)
+        self.assertIn(f"monitoring is on for {other}", mails[-1].lower(), "the second service gets its own welcome")
+        self.assertFalse(any("Newly listed" in m for m in mails), "not 25 'newly listed' lines")
+        # Now something on each: one email covering both, long lists capped.
+        self.probe("/a", outcome="http_error", status=503)
+        self.probe("/a", outcome="http_error", status=503)
+        for i in range(25, 40):
+            res = f"https://{other}/r{i}"
+            self.conn.execute("INSERT INTO endpoints (resource, host, first_seen, last_seen, method, network, asset, "
+                              "pay_to, listed_amount, listed_usd, l30_payers, catalog_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                              (res, other, "2026-10-29T00:00:00Z", "2026-10-29T00:00:00Z", "GET", "eip155:8453",
+                               USDC, GOOD, "10000", 0.01, 1, "{}"))
+        self.conn.commit()
+        alerts.run(self.conn, log=lambda *_: None, now=datetime.now(timezone.utc) + timedelta(hours=1))
+        self.assertEqual(len(self.outbox()), 3)
+        body = self.outbox()[-1].read_text()
+        self.assertEqual(subject(self.outbox()[-1]), "Settle Watch alert: 1 endpoint stopped answering, 15 new listings on 2 services")
+        self.assertIn("Newly listed (15):", body)
+        self.assertIn("and 5 more", body)
+        self.assertIn("/a (HTTP 503)", body)
+
+    def test_unwatched_services_drop_their_waiting_changes(self):
+        self.probe("/b", amount="20000")
+        self.cycle()
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM alert_pending").fetchone()[0], 1)
+        alerts.unwatch("owner@example.com", HOST)
+        alerts.watch("owner@example.com", "api.elsewhere.example")
+        self.cycle()
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM alert_pending").fetchone()[0], 0)
 
 
 if __name__ == "__main__":

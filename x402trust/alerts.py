@@ -1,20 +1,22 @@
 """Email alerts for sellers who asked to be told when their endpoints change.
 
 Watch list: ~/x402-trust-data/watchers.json (managed with `python3 -m x402trust watch`).
-Watched endpoints are checked every cycle. After each cycle, each watcher gets at
-most one email listing what changed since the last cycle:
+Watched endpoints are checked every cycle. Changes are bundled so nobody gets buried:
 
-  - stopped answering (two failed checks in a row, so one blip doesn't page anyone)
-  - answering again
-  - asks a different price than before
-  - asks for payment to a different wallet than before (skipped for services that
-    use a fresh address on every request)
-  - removed from, or back in, the Bazaar catalog
-  - availability over 30 days fell below, or came back above, the 99% Coinbase wants for featured listings
-  - newly listed under the watched name
+  - one email per person per cycle at most, covering every service they watch;
+  - urgent changes go out with the next cycle: an endpoint stopped answering (two failed checks
+    in a row, so one blip doesn't page anyone) or answers again, asks to be paid at a different
+    wallet (skipped for services that use a fresh address on every request), or was removed
+    from the Bazaar catalog;
+  - everything else waits for a daily digest (at most one a day): price changes, new listings,
+    back in the catalog, and availability over 30 days falling below or back above the 99%
+    Coinbase wants for featured listings. Anything waiting rides along with an urgent email;
+  - changes that undo themselves before they're sent (a price that moves and moves back, a dip
+    below 99% that recovers) are dropped, and long lists are grouped and capped.
 
-The first cycle after someone is added sends a short "monitoring is on" email with
-the current status, so they know it works.
+The first cycle after someone starts watching a service sends a short "monitoring is on" email
+with the current status, so they know it works (one per service, even for people who already
+watch another one).
 
 Sending uses SMTP (for Gmail: an app password; see the README). If SMTP isn't set
 up, emails are written to ~/x402-trust-data/outbox/ instead and nothing is sent.
@@ -22,10 +24,14 @@ up, emails are written to ~/x402-trust-data/outbox/ instead and nothing is sent.
 
 import json
 import smtplib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 from urllib.parse import urlsplit
+
+URGENT = ("down", "up", "wallet", "delisted")   # sent with the next cycle
+DIGEST_HOURS = 20                               # everything else: at most one digest a day
+LIST_MAX = 10                                   # lines per group before "and N more"
 
 from . import config, db
 from . import notes as owner_notes
@@ -39,6 +45,16 @@ CREATE TABLE IF NOT EXISTS alert_state (
     state     TEXT NOT NULL,
     updated   TEXT NOT NULL,
     PRIMARY KEY (email, resource)
+);
+CREATE TABLE IF NOT EXISTS alert_pending (
+    email     TEXT NOT NULL,
+    resource  TEXT NOT NULL,
+    kind      TEXT NOT NULL,     -- down | up | wallet | delisted | price | new | relisted | bar | bar_ok
+    match     TEXT NOT NULL,     -- the watched service it belongs to
+    data      TEXT NOT NULL,     -- what to say (JSON); for price, the first "was" and the latest "now"
+    first_ts  TEXT NOT NULL,
+    ts        TEXT NOT NULL,
+    PRIMARY KEY (email, resource, kind)
 );
 CREATE TABLE IF NOT EXISTS alert_log (
     ts        TEXT NOT NULL,
@@ -155,34 +171,63 @@ def current_state(conn, ep, prev, notes):
     }
 
 
-def events_for(resource, prev, cur):
-    """Plain-English lines describing what changed. Empty list if nothing did."""
+def event_records(resource, prev, cur):
+    """What changed for one endpoint, as (kind, data) pairs. Empty if nothing did."""
     ev = []
     if prev is None:
         if cur["status"] != "retired":
-            ev.append(("new", f"Newly listed: {resource}"))
+            ev.append(("new", {}))
         return ev
     if prev["status"] == "up" and cur["status"] == "down":
-        code = f" (HTTP {cur['last_code']})" if cur.get("last_code") else ""
-        ev.append(("down", f"Stopped answering{code} on the last two checks: {resource}"))
+        ev.append(("down", {"code": cur.get("last_code")}))
     elif prev["status"] == "down" and cur["status"] == "up":
-        ev.append(("up", f"Answering again: {resource}"))
+        ev.append(("up", {}))
     if prev.get("amount") and cur.get("amount") and prev["amount"] != cur["amount"]:
-        listed = f" Its listing says {money(cur['listed_usd'])}." if cur.get("listed_usd") is not None else ""
-        ev.append(("price", f"Now asks {money(cur['usd'])} (was {money(prev.get('usd'))}): {resource}.{listed}"))
+        ev.append(("price", {"was_amount": prev["amount"], "was_usd": prev.get("usd"), "amount": cur["amount"],
+                             "usd": cur.get("usd"), "listed_usd": cur.get("listed_usd")}))
     if (prev.get("pay_to") and cur.get("pay_to") and prev["pay_to"] != cur["pay_to"]
             and not cur.get("rotating") and not prev.get("rotating")):
-        ev.append(("wallet", f"Now asks for payment to {cur['pay_to']} (was {prev['pay_to']}): {resource}"))
+        ev.append(("wallet", {"was": prev["pay_to"], "now": cur["pay_to"]}))
     if prev.get("below_bar") is False and cur.get("below_bar") is True:
-        ev.append(("bar", f"Availability over 30 days fell to {pct(cur.get('uptime_30d'))}, below the 99% Coinbase "
-                          f"wants for featured Bazaar listings: {resource}"))
+        ev.append(("bar", {"uptime_30d": cur.get("uptime_30d")}))
     elif prev.get("below_bar") is True and cur.get("below_bar") is False:
-        ev.append(("bar_ok", f"Back above 99% availability over 30 days ({pct(cur.get('uptime_30d'))}): {resource}"))
+        ev.append(("bar_ok", {"uptime_30d": cur.get("uptime_30d")}))
     if not prev.get("delisted") and cur.get("delisted"):
-        ev.append(("delisted", f"Removed from the Bazaar catalog: {resource}"))
+        ev.append(("delisted", {}))
     elif prev.get("delisted") and not cur.get("delisted"):
-        ev.append(("relisted", f"Back in the Bazaar catalog: {resource}"))
+        ev.append(("relisted", {}))
     return ev
+
+
+def describe(kind, resource, d):
+    """One plain-English line for an event."""
+    if kind == "new":
+        return f"Newly listed: {resource}"
+    if kind == "down":
+        code = f" (HTTP {d['code']})" if d.get("code") else ""
+        return f"Stopped answering{code} on the last two checks: {resource}"
+    if kind == "up":
+        return f"Answering again: {resource}"
+    if kind == "price":
+        listed = f" Its listing says {money(d['listed_usd'])}." if d.get("listed_usd") is not None else ""
+        return f"Now asks {money(d.get('usd'))} (was {money(d.get('was_usd'))}): {resource}.{listed}"
+    if kind == "wallet":
+        return f"Now asks for payment to {d['now']} (was {d['was']}): {resource}"
+    if kind == "bar":
+        return (f"Availability over 30 days fell to {pct(d.get('uptime_30d'))}, below the 99% Coinbase "
+                f"wants for featured Bazaar listings: {resource}")
+    if kind == "bar_ok":
+        return f"Back above 99% availability over 30 days ({pct(d.get('uptime_30d'))}): {resource}"
+    if kind == "delisted":
+        return f"Removed from the Bazaar catalog: {resource}"
+    if kind == "relisted":
+        return f"Back in the Bazaar catalog: {resource}"
+    return f"{kind}: {resource}"
+
+
+def events_for(resource, prev, cur):
+    """Plain-English lines describing what changed. Empty list if nothing did."""
+    return [(k, describe(k, resource, d)) for k, d in event_records(resource, prev, cur)]
 
 
 # ---------- email ----------
@@ -242,9 +287,9 @@ def welcome_body(w, states):
         lines += ["", "Not answering:"] + [f"  {r}" for r in down[:20]]
         if len(down) > 20:
             lines.append(f"  …and {len(down) - 20} more")
-    lines += ["", "From here on you'll get one email per check when something changes: an endpoint stops "
-              "answering or comes back, drops out of the Bazaar, falls below 99% availability over 30 days, or "
-              "starts asking a different price or wallet. No change, no email.",
+    lines += ["", "From here on: if an endpoint stops answering or comes back, asks to be paid at a different "
+              "wallet, or drops out of the Bazaar, you'll hear after the next check. Smaller changes (prices, new "
+              "listings, 99% availability over 30 days) come together in one email a day at most. No change, no email.",
               "", "Ben"]
     return "\n".join(lines) + footer(w)
 
@@ -255,68 +300,205 @@ def footer(w):
     return FOOTER + (f"\nOr unsubscribe in one click: {link}" if link else "")
 
 
-def change_body(w, events):
-    order = {"down": 0, "wallet": 1, "price": 2, "delisted": 3, "bar": 4, "up": 5, "relisted": 6, "bar_ok": 7, "new": 8}
-    events = sorted(events, key=lambda e: order.get(e[0], 9))
-    lines = [f"Hi{(' ' + w['name']) if w.get('name') else ''},", "",
-             f"Here's what changed on {w['match']} since the last check:", ""]
-    lines += [f"- {text}" for _, text in events[:50]]
-    if len(events) > 50:
-        lines.append(f"- …and {len(events) - 50} more")
+GROUPS = [  # (kind, heading), in the order they appear in an email
+    ("down", "Stopped answering on the last two checks"),
+    ("wallet", "Asks to be paid at a different wallet"),
+    ("delisted", "Removed from the Bazaar catalog"),
+    ("up", "Answering again"),
+    ("price", "Price changes"),
+    ("bar", "Fell below 99% availability over 30 days (Coinbase's bar for featured listings)"),
+    ("bar_ok", "Back above 99% availability over 30 days"),
+    ("relisted", "Back in the Bazaar catalog"),
+    ("new", "Newly listed"),
+]
+
+
+def _short(resource, match):
+    """The endpoint's path when it's on the watched host, so long lists stay readable."""
+    host = match.split("://")[-1].split("/")[0].lower()
+    u = urlsplit(resource)
+    if u.netloc.lower() == host:
+        return (u.path or "/") + (f"?{u.query}" if u.query else "")
+    return resource
+
+
+def _item(kind, res, d):
+    if kind == "down":
+        return res + (f" (HTTP {d['code']})" if d.get("code") else "")
+    if kind == "price":
+        listed = f" (listing says {money(d['listed_usd'])})" if d.get("listed_usd") is not None else ""
+        return f"{res}: {money(d.get('was_usd'))} -> {money(d.get('usd'))}{listed}"
+    if kind == "wallet":
+        return f"{res}: now {d['now']} (was {d['was']})"
+    if kind in ("bar", "bar_ok"):
+        return f"{res}: {pct(d.get('uptime_30d'))}"
+    return res
+
+
+def net_out(items):
+    """Drop changes that undid themselves while waiting: a price back where it was, a dip below 99% that
+    recovered. items: [(match, resource, kind, data)]"""
+    keys = {(r, k) for _, r, k, _ in items}
+    out = []
+    for m, r, k, d in items:
+        if k == "price" and d.get("was_amount") == d.get("amount"):
+            continue
+        if k in ("bar", "bar_ok") and (r, "bar" if k == "bar_ok" else "bar_ok") in keys:
+            continue
+        out.append((m, r, k, d))
+    return out
+
+
+def summary(items):
+    counts = {}
+    for _, _, k, _ in items:
+        counts[k] = counts.get(k, 0) + 1
+    words = {"down": ("endpoint stopped answering", "endpoints stopped answering"),
+             "up": ("endpoint answering again", "endpoints answering again"),
+             "wallet": ("wallet change", "wallet changes"), "delisted": ("removed from the Bazaar", "removed from the Bazaar"),
+             "price": ("price change", "price changes"), "new": ("new listing", "new listings"),
+             "bar": ("below 99%", "below 99%"), "bar_ok": ("back above 99%", "back above 99%"),
+             "relisted": ("back in the Bazaar", "back in the Bazaar")}
+    parts = [f"{counts[k]} {words[k][counts[k] != 1]}" for k, _ in GROUPS if counts.get(k)]
+    return ", ".join(parts)
+
+
+def change_body(w, items, urgent):
+    """One email for one person: every service they watch, grouped by service and kind."""
+    services = []
+    for m, _, _, _ in items:
+        if m not in services:
+            services.append(m)
+    head = ("Something needs a look" if urgent else "Here's what changed") + (
+        f" on {services[0]}" if len(services) == 1 else f" on {len(services)} of the services you watch")
+    lines = [f"Hi{(' ' + w['name']) if w.get('name') else ''},", "", head + ":"]
+    for m in services:
+        mine = [(r, k, d) for mm, r, k, d in items if mm == m]
+        if len(services) > 1:
+            lines += ["", m, "-" * min(len(m), 60)]
+        for kind, heading in GROUPS:
+            group = sorted((_item(kind, _short(r, m), d) for r, k, d in mine if k == kind))
+            if not group:
+                continue
+            lines += ["", f"{heading} ({len(group)}):"]
+            lines += [f"  {g}" for g in group[:LIST_MAX]]
+            if len(group) > LIST_MAX:
+                lines.append(f"  and {len(group) - LIST_MAX} more")
+        host = m.split("://")[-1].split("/")[0]
+        lines += ["", f"Live status: https://settlewatch.com/seller/{host}.html"]
+    if not urgent:
+        lines += ["", "Changes like these come together once a day at most. You'll hear sooner if an endpoint stops "
+                  "answering or its wallet changes."]
     lines += ["", "Ben"]
     return "\n".join(lines) + footer(w)
 
 
 # ---------- the alert step ----------
 
-def run(conn=None, dry_run=False, log=print):
+def queue(conn, email, match, resource, kind, data, now):
+    row = conn.execute("SELECT data FROM alert_pending WHERE email=? AND resource=? AND kind=?",
+                       (email, resource, kind)).fetchone()
+    if row and kind == "price":  # keep the first "was" so a change that undoes itself nets out
+        old = json.loads(row["data"])
+        data = {**data, "was_amount": old.get("was_amount"), "was_usd": old.get("was_usd")}
+    if row:
+        conn.execute("UPDATE alert_pending SET data=?, match=?, ts=? WHERE email=? AND resource=? AND kind=?",
+                     (json.dumps(data), match, now, email, resource, kind))
+    else:
+        conn.execute("INSERT INTO alert_pending VALUES (?,?,?,?,?,?,?)",
+                     (email, resource, kind, match, json.dumps(data), now, now))
+
+
+def _last_sent(conn, email):
+    row = conn.execute("SELECT MAX(ts) FROM alert_log WHERE email=? AND delivery IN ('sent', 'outbox')",
+                       (email,)).fetchone()
+    return row[0] if row else None
+
+
+def _hours_since(ts, now):
+    try:
+        then = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return (now - then).total_seconds() / 3600
+
+
+def run(conn=None, dry_run=False, log=print, now=None):
     conn = conn or db.connect()
     conn.executescript(SCHEMA)
     watchers = load_watchers()
     if not watchers:
         return 0
+    now_dt = now or datetime.now(timezone.utc)
     notes = owner_notes.load()
     sent = 0
+    people = {}
     for w in watchers:
-        email = w["email"]
+        people.setdefault(w["email"], []).append(w)
+    for email, ws in people.items():
         prev_rows = {r["resource"]: json.loads(r["state"]) for r in conn.execute(
             "SELECT resource, state FROM alert_state WHERE email=?", (email,))}
-        first_time = not prev_rows
-        states, events = {}, []
-        for ep in _endpoints_for(conn, w["match"]):
-            prev = prev_rows.get(ep["resource"])
-            if ep["delisted"] and (prev is None or prev.get("delisted")):
-                continue
-            cur = current_state(conn, ep, prev, notes)
-            states[ep["resource"]] = cur
-            if not first_time:
-                events += events_for(ep["resource"], prev, cur)
-        if first_time:
-            subject = f"Settle Watch: monitoring is on for {w['match']}"
-            body = welcome_body(w, states)
-        elif events:
-            n = len(events)
-            subject = f"x402 alert: {n} change{'s' if n != 1 else ''} on {w['match']}"
-            body = change_body(w, events)
-        else:
-            subject = body = None
-
-        if body:
-            if dry_run:
-                log(f"[dry run] To {email}: {subject}\n{body}\n")
-                continue
+        keep = {}  # resource -> state to save
+        stamp = db.now()
+        for w in ws:
+            eps = [ep for ep in _endpoints_for(conn, w["match"])
+                   if not (ep["delisted"] and (prev_rows.get(ep["resource"]) is None
+                                               or prev_rows[ep["resource"]].get("delisted")))]
+            # First cycle for this service (even if this person already watches another one): say hello.
+            first_time = not prev_rows or (bool(eps) and not any(ep["resource"] in prev_rows for ep in eps))
+            states = {}
+            for ep in eps:
+                prev = prev_rows.get(ep["resource"])
+                cur = current_state(conn, ep, prev, notes)
+                states[ep["resource"]] = cur
+                if not first_time and not dry_run:
+                    for kind, data in event_records(ep["resource"], prev, cur):
+                        queue(conn, email, w["match"], ep["resource"], kind, data, stamp)
+            if first_time:
+                subject = f"Settle Watch: monitoring is on for {w['match']}"
+                body = welcome_body(w, states)
+                if dry_run:
+                    log(f"[dry run] To {email}: {subject}\n{body}\n")
+                    continue
+                delivery = deliver(email, subject, body, log)
+                conn.execute("INSERT INTO alert_log VALUES (?,?,?,?,?)", (db.now(), email, subject, 0, delivery))
+                log(f"Alert to {email}: {subject} ({delivery})")
+                if delivery == "sent":
+                    sent += 1
+                elif delivery.startswith("failed"):
+                    continue  # don't record state, so the welcome is tried again next cycle
+            keep.update(states)
+        if dry_run:
+            continue
+        # Everything waiting for this person, across every service they still watch.
+        watched = [w["match"] for w in ws]
+        conn.execute(f"DELETE FROM alert_pending WHERE email=? AND match NOT IN ({','.join('?' * len(watched))})",
+                     (email, *watched))
+        rows = conn.execute("SELECT match, resource, kind, data, first_ts FROM alert_pending WHERE email=?",
+                            (email,)).fetchall()
+        items = net_out([(r["match"], r["resource"], r["kind"], json.loads(r["data"])) for r in rows])
+        if rows and not items:
+            conn.execute("DELETE FROM alert_pending WHERE email=?", (email,))  # it all undid itself
+        urgent = any(k in URGENT for _, _, k, _ in items)
+        since = _hours_since(_last_sent(conn, email), now_dt)
+        if items and (urgent or since is None or since >= DIGEST_HOURS):
+            w = ws[0]
+            what = summary(items)
+            services = sorted({m for m, _, _, _ in items})
+            where = services[0] if len(services) == 1 else f"{len(services)} services"
+            subject = (f"Settle Watch alert: {what} on {where}" if urgent else f"Settle Watch daily: {what} on {where}")
+            if len(subject) > 140:
+                subject = subject[:137] + "..."
+            body = change_body(w, items, urgent)
             delivery = deliver(email, subject, body, log)
-            conn.execute("INSERT INTO alert_log VALUES (?,?,?,?,?)",
-                         (db.now(), email, subject, len(events), delivery))
+            conn.execute("INSERT INTO alert_log VALUES (?,?,?,?,?)", (db.now(), email, subject, len(items), delivery))
             log(f"Alert to {email}: {subject} ({delivery})")
             if delivery == "sent":
                 sent += 1
-            elif delivery.startswith("failed"):
-                continue  # keep old state so the same changes go out next cycle
-        if not dry_run:
-            now = db.now()
-            for resource, cur in states.items():
-                conn.execute("INSERT OR REPLACE INTO alert_state VALUES (?,?,?,?)",
-                             (email, resource, json.dumps(cur), now))
-            conn.commit()
+            if not delivery.startswith("failed"):
+                conn.execute("DELETE FROM alert_pending WHERE email=?", (email,))
+        for resource, cur in keep.items():
+            conn.execute("INSERT OR REPLACE INTO alert_state VALUES (?,?,?,?)",
+                         (email, resource, json.dumps(cur), stamp))
+        conn.commit()
     return sent
