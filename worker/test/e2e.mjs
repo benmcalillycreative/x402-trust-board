@@ -23,6 +23,9 @@ const fake = http.createServer((req, res) => {
   req.on("end", () => {
     calls.push(req.url);
     const json = (code, obj) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
+    if (req.url.startsWith("/dns?")) { // the seller's live _x402-payto records: A, plus a rotation the board hasn't seen
+      return json(200, { Status: 0, Answer: [A, "0x" + "ee".repeat(20)].map((a) => ({ type: 16, TTL: 300, data: `"v=x402payto1; a=${a}"` })) });
+    }
     if (req.url === "/seller/api.example.com.json") return json(200, SELLER);
     if (req.url.startsWith("/seller/")) return json(404, {});
     if (req.url === "/cdp/v2/x402/validate") {
@@ -56,7 +59,7 @@ const { mkdtempSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const STATE = mkdtempSync(`${tmpdir()}/x402t-e2e-`);
 const dev = spawn("npx", ["wrangler", "dev", "--port", String(PORT), "--ip", "127.0.0.1", "--persist-to", STATE,
-  "--var", `ALERTS_TOKEN:t0ken`, "--var", "PRICE:$0.01", "--var", `BOARD_URL:${F}/`, "--var", `FACILITATOR_URL:${F}/fac`, "--var", `PAY_TO:${PAY_TO}`, "--var", `CDP_PUBLIC_API:${F}/cdp`, "--var", "LISTING_PER_DAY:2"],
+  "--var", `ALERTS_TOKEN:t0ken`, "--var", "PRICE:$0.01", "--var", `BOARD_URL:${F}/`, "--var", `FACILITATOR_URL:${F}/fac`, "--var", `PAY_TO:${PAY_TO}`, "--var", `CDP_PUBLIC_API:${F}/cdp`, "--var", "LISTING_PER_DAY:2", "--var", `DOH_URL:${F}/dns`],
   { env: { ...process.env, NO_PROXY: "127.0.0.1,localhost", no_proxy: "127.0.0.1,localhost" }, stdio: ["ignore", "pipe", "pipe"], detached: true });
 let log = "";
 dev.stdout.on("data", (d) => (log += d));
@@ -110,6 +113,11 @@ try {
 
   const bad = await pay(`${W}/v1/check?url=${encodeURIComponent("https://api.example.com/x")}&payTo=0x${"dd".repeat(20)}`);
   assert.equal((await bad.json()).verdict, "avoid");
+  const rot = await (await pay(`${W}/v1/check?url=${encodeURIComponent("https://api.example.com/x")}&payTo=0x${"ee".repeat(20)}`)).json();
+  assert.equal(rot.verdict, "caution", JSON.stringify(rot));
+  assert.equal(rot.dns_live, "match");
+  assert.equal(rot.pay_to.contradicts_seller_proof, false);
+  assert.ok(calls.some((u) => u.startsWith("/dns?name=_x402-payto.api.example.com")));
   const unk = await pay(`${W}/v1/check?url=${encodeURIComponent("https://never.example/x")}`);
   assert.equal((await unk.json()).verdict, "unknown");
 
@@ -238,9 +246,9 @@ try {
   assert.equal(q.filter((i) => i.kind === "payment").length, 2);
   const sj = await (await fetch(`${W}/v1/stats`)).json();
   assert.equal(sj.days.length, 1);
-  assert.equal(sj.days[0].checks, 3, "the three paid checks above");
+  assert.equal(sj.days[0].checks, 4, "the four paid checks above");
   assert.equal(sj.days[0].plans, 3, "three plan payments (the failed settle isn't counted)");
-  assert.equal(sj.last_7_days.usd, 59.98);
+  assert.equal(sj.last_7_days.usd, 59.99);
   assert.ok(Object.keys(sj.days[0].payers).every((p) => /^0x[0-9a-f]{4}…[0-9a-f]{4}$/.test(p)), "payers shortened");
   console.log("seller plan OK:", pj.paid_until);
   console.log("e2e passed");

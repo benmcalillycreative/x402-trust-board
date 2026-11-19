@@ -141,6 +141,27 @@ Given a 402 response with `payTo = P` for a resource on host `H`:
 Step 4 is the point of this spec: once a seller publishes a proof, a hijacked endpoint can no longer
 silently redirect payments.
 
+### 6.1 Caching
+
+A live DNS lookup should not sit in front of every payment. Clients SHOULD:
+
+1. Cache a domain's proof set for **min(record TTL, 24 hours)**. When no record exists, cache that answer
+   for the negative TTL (the SOA minimum), capped the same way.
+2. When the quoted `payTo` **is** in the cached set, pay. No lookup.
+3. When it **isn't**, look up DNS live (bypassing the cache) before deciding. A legitimate rotation
+   passes this re-check; an address swapped on a compromised server fails it, because the attacker
+   can't change the domain's DNS. This is the only path that pays for a round trip.
+4. Rate-limit those re-checks per domain (for example, at most one a minute), so a hostile server
+   quoting random addresses can't make the client hammer DNS.
+5. Treat a failed lookup as no evidence either way: never block on DNS being unreachable alone.
+
+Revocation is the one case the cache bounds: after a seller removes an address, a client may still
+match it until its cached copy expires (at most 24 hours, or the record's TTL if shorter). Sellers who
+may need to revoke under pressure should keep the TTL short.
+
+The reference implementation is `proofs.js` in `x402-trust-guard`, shared with the Settle Watch check
+API.
+
 Exceptions verifiers should handle:
 
 - **Per-payment addresses.** Some sellers quote a fresh address every time (deposit-address or payment
@@ -152,7 +173,10 @@ Exceptions verifiers should handle:
 
 ## 7. Rotation and revocation
 
-- To rotate: publish the new address (new record or entry), switch `payTo`, then remove the old one.
+- To rotate: publish the new address (new record or entry), **wait one TTL** so resolvers serve it,
+  switch `payTo`, then remove the old one.
+- TTL: 3600 seconds is a sensible default. Lower it (to 300, say) a day before a planned change and
+  raise it again after.
 - To revoke: remove the record or entry. Verifiers SHOULD re-check at least daily.
 - There is no expiry field: a stale proof is removed, not timed out.
 

@@ -20,6 +20,13 @@ about the endpoint and the address it wants paid, and **stops the payment** when
 - the endpoint switched to a different wallet, or asks to be paid at a burn address
 - the address isn't in the payout proof the seller published (a hijacked server can change where money goes; it can't change the seller's DNS)
 
+It also reads the seller's payout proof straight from DNS (`_x402-payto` TXT records), so an address swapped
+on a compromised server is caught even between the board's refreshes, without asking anyone. The lookup is
+cached by the record's TTL (at most 24 hours) and only repeated live when the quoted address isn't in the
+cached set, so the normal path adds no DNS round trip. A legitimate rotation passes that re-check (as
+`caution`, until the board catches up); a swapped address doesn't. If DNS can't be reached, it never blocks
+on that alone. [Cache policy](https://github.com/benmcalillycreative/x402-trust-board/blob/main/docs/payout-proof-spec.md#61-caching).
+
 Price problems (asking well above the listing), flaky uptime, low grades and thin history come back as `caution`,
 which you can choose to block too (`onCaution: "block"`).
 
@@ -41,6 +48,8 @@ withTrustGuard(client, {
   onUnknown: "allow",    // "allow" | "block": a seller the board has never seen
   onError: "allow",      // "allow" | "block": the check itself failed (network, board down)
   cacheSeconds: 86400,
+  dnsProofs: true,       // read the seller's DNS payout proof live (cached by its TTL)
+  onProofMismatch: "block", // "allow" only for sellers that quote a fresh address for every payment
   onResult: (r) => console.log(r.verdict, r.url, r.reasons),
 });
 ```

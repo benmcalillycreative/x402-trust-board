@@ -19,6 +19,8 @@ import { openapi, wellKnown } from "./openapi.js";
 import { ICON_PNG_BASE64 } from "./icon.js";
 import { registerPlan, planRoute, decodeSettlement } from "./plan.js";
 import { countPaid, stats } from "./stats.js";
+import { ProofCache, reconcile, withProof } from "./proofs.js";
+import { recoverMessageAddress } from "viem";
 import { evmPaywall } from "@x402/paywall/evm";
 import { analyze, findPayTo, parseListingInput, LISTING_FREE_PER_DAY } from "./listing.js";
 
@@ -286,7 +288,27 @@ app.get("/v1/check", async (c) => {
     // A 5xx means the middleware won't settle, so the caller isn't charged.
     return c.json({ error: "Couldn't read the board just now; you weren't charged. Try again shortly." }, 503);
   }
-  return c.json(verdict(target, seller, c.req.query("payTo"), c.env.BOARD_URL));
+  const payTo = c.req.query("payTo");
+  let result = verdict(target, seller, payTo, c.env.BOARD_URL);
+  // The board reads payout proofs a few times a day. When its data says the address contradicts the
+  // seller's proof, look at DNS live before answering: the seller may have rotated since.
+  if (seller && result.pay_to?.contradicts_seller_proof) {
+    const live = await proofCache(c.env).check(target.host, payTo, { fresh: true });
+    result = reconcile(result, live, (p) => verdict(target, withProof(seller, p), payTo, c.env.BOARD_URL));
+  }
+  return c.json(result);
 });
+
+// Live DNS proofs, cached per isolate by the spec's policy (proofs.js).
+let proofs = null;
+const verifySig = async (address, message, signature) => {
+  if (!address.startsWith("0x")) return null;
+  const who = await recoverMessageAddress({ message, signature });
+  return who.toLowerCase() === address.toLowerCase() ? true : null; // a contract wallet doesn't recover: unknown, not false
+};
+function proofCache(env) {
+  if (!proofs) proofs = new ProofCache({ doh: env.DOH_URL || undefined, verify: verifySig });
+  return proofs;
+}
 
 export default app;

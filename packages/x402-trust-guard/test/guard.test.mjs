@@ -8,10 +8,14 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { withTrustGuard, checkFree } from "../index.js";
+import { ProofCache, dnsNames, joinTxt, reconcile } from "../proofs.js";
 
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const GOOD = "0x" + "a1".repeat(20);
 const BAD = "0x" + "dd".repeat(20);
+const SWAP = "0x" + "5a".repeat(20);  // a swapped address the fake API doesn't know about
+const NEW = "0x" + "ee".repeat(20);   // a legitimate rotation the board hasn't seen yet
+let dns = [], dnsQueries = 0;         // the seller's live _x402-payto records
 const HOST = "seller.example";
 let server, base, paid = [], checks = 0;
 
@@ -35,6 +39,13 @@ before(async () => {
   server = http.createServer((req, res) => {
     const url = new URL(req.url, base);
     const signed = req.headers["payment-signature"] || req.headers["x-payment"];
+    if (url.pathname === "/dns") {
+      dnsQueries++;
+      const body = dns.length
+        ? { Status: 0, Answer: dns.map((a) => ({ name: url.searchParams.get("name"), type: 16, TTL: 300, data: `"v=x402payto1; a=${a}"` })) }
+        : { Status: 3, Authority: [{ TTL: 900 }] };
+      res.writeHead(200, { "content-type": "application/dns-json" }); return res.end(JSON.stringify(body));
+    }
     if (url.pathname === `/board/seller/${HOST}.json`) { res.writeHead(200); return res.end(JSON.stringify(SELLER)); }
     if (url.pathname.startsWith("/board/seller/")) { res.writeHead(404); return res.end("{}"); }
     if (url.pathname === "/api/v1/check") {
@@ -47,7 +58,7 @@ before(async () => {
     }
     // The fake seller: /good and /flagged ask GOOD, /hijacked asks BAD. The URL the client sees is
     // https://seller.example/..., routed here by the fetch shim below.
-    const payTo = url.pathname === "/hijacked" ? BAD : GOOD;
+    const payTo = { "/hijacked": BAD, "/swapped": SWAP, "/rotated": NEW }[url.pathname] || GOOD;
     if (!signed) { res.writeHead(402, { "payment-required": required(`https://${HOST}${url.pathname}`, payTo) }); return res.end("{}"); }
     paid.push(url.pathname);
     res.writeHead(200); res.end("paid content");
@@ -67,7 +78,7 @@ const shim = (input, init) => {
 
 function client(opts) {
   const c = new x402Client().register("eip155:*", new ExactEvmScheme(privateKeyToAccount(generatePrivateKey())));
-  withTrustGuard(c, { board: `${base}/board/`, api: `${base}/api`, fetch: shim, ...opts });
+  withTrustGuard(c, { board: `${base}/board/`, api: `${base}/api`, doh: `${base}/dns`, fetch: shim, ...opts });
   return wrapFetchWithPayment(shim, c);
 }
 
@@ -94,7 +105,7 @@ function hookOf(opts) {
   const c = new x402Client();
   let hook;
   c.onBeforePaymentCreation = (h) => { hook = h; return c; };
-  withTrustGuard(c, { mode: "free", board: `${base}/board/`, fetch: shim, ...opts });
+  withTrustGuard(c, { mode: "free", board: `${base}/board/`, doh: `${base}/dns`, fetch: shim, ...opts });
   return hook;
 }
 
@@ -111,6 +122,63 @@ test("a failed check allows by default and blocks when asked", async () => {
   const args = { paymentRequired: { resource: { url: `https://${HOST}/good` } }, selectedRequirements: { payTo: GOOD } };
   assert.equal(await mk("allow")(args), undefined);
   assert.equal((await mk("block")(args)).abort, true);
+});
+
+test("live DNS proof: a swapped payTo is blocked before any check is bought; the normal path costs no lookups", async () => {
+  dns = [GOOD]; dnsQueries = 0; paid = []; checks = 0;
+  const pay = client({ mode: "paid" });
+  assert.equal((await pay(`https://${HOST}/good`)).status, 200);
+  assert.equal((await pay(`https://${HOST}/good`)).status, 200);
+  assert.equal(dnsQueries, 1, "one lookup, then cached by TTL");
+  await assert.rejects(pay(`https://${HOST}/swapped`), /isn't in the payout proof/);
+  assert.equal(dnsQueries, 1, "the re-check is rate-limited right after a lookup");
+  assert.equal(checks, 1, "no paid check was bought for the swapped address");
+  assert.deepEqual(paid, ["/good", "/good"]);
+  dns = [];
+});
+
+test("live DNS proof: a rotation the board hasn't seen yet is let through as caution", async () => {
+  dns = [GOOD, NEW]; paid = [];
+  const seen = [];
+  const pay = client({ mode: "free", onResult: (r) => seen.push(r) });
+  assert.equal((await pay(`https://${HOST}/rotated`)).status, 200);
+  assert.deepEqual(paid, ["/rotated"]);
+  const r = seen.at(-1);
+  assert.equal(r.verdict, "caution");
+  assert.equal(r.pay_to.contradicts_seller_proof, false);
+  assert.match(r.reasons.join(" "), /changed after the board's last check/);
+  dns = [];
+});
+
+test("proof cache: TTL, a live re-check only on a miss, rate-limited, shared hosting skipped", async () => {
+  let t = 0, n = 0, records = [GOOD];
+  const f = async () => { n++; return new Response(JSON.stringify({ Status: 0, Answer: records.map((a) => ({ type: 16, TTL: 600, data: `"v=x402payto1; " "a=${a}"` })) })); };
+  const pc = new ProofCache({ fetch: f, doh: "https://doh.test/q", now: () => t });
+  assert.equal((await pc.check("api.seller.example", GOOD)).status, "match");
+  assert.equal(n, 2, "host and parent looked up once");
+  assert.equal((await pc.check("api.seller.example", GOOD)).status, "match");
+  assert.equal(n, 2, "cached");
+  t = 30e3;
+  assert.equal((await pc.check("api.seller.example", NEW)).status, "mismatch");
+  assert.equal(n, 2, "no re-check within a minute of the last lookup");
+  t = 90e3; records = [GOOD, NEW];
+  assert.equal((await pc.check("api.seller.example", NEW)).status, "match", "after a minute a miss re-checks live and finds the rotation");
+  assert.equal(n, 4);
+  t = 90e3 + 601e3;
+  await pc.check("api.seller.example", GOOD);
+  assert.equal(n, 6, "expired after the record's TTL");
+  assert.equal((await pc.check("x.onrender.com", GOOD)).status, "none");
+  assert.deepEqual(dnsNames("a.b.co.uk"), ["a.b.co.uk", "b.co.uk"]);
+  assert.equal(joinTxt('"v=x402payto1; a=0x1" "; s=0xab"'), "v=x402payto1; a=0x1; s=0xab");
+  const failing = new ProofCache({ fetch: async () => { throw new Error("offline"); } });
+  assert.equal((await failing.check("api.seller.example", GOOD)).status, "error", "DNS down never blocks by itself");
+  assert.equal(reconcile({ verdict: "ok", reasons: [], pay_to: { address: SWAP } }, { status: "error" }).verdict, "ok");
+});
+
+test("proofs.js is the same file in the API and the guard", () => {
+  const here = fs.readFileSync(new URL("../proofs.js", import.meta.url), "utf8");
+  const api = fs.readFileSync(new URL("../../../worker/src/proofs.js", import.meta.url), "utf8");
+  assert.equal(here, api, "packages/x402-trust-guard/proofs.js must stay a copy of worker/src/proofs.js");
 });
 
 test("verdict logic matches the API's copy", () => {

@@ -8,7 +8,13 @@
 // the endpoint and the address it wants paid look safe, and stops the payment on "avoid"
 // (a switched or burn wallet, a 10x overcharge, an address that contradicts the seller's own
 // payout proof). Answers are cached, so each endpoint is checked at most once a day.
+//
+// It also reads the seller's payout proof from DNS itself (_x402-payto TXT records, see
+// docs/payout-proof-spec.md), so a payTo swapped on a compromised server is caught even between the
+// board's refreshes. That lookup is cached by the record's TTL (at most 24 hours) and only repeated
+// live when the quoted address isn't in the cached set: no DNS round trip on the normal path.
 import { parseTarget, verdict } from "./verdict.js";
+import { ProofCache, reconcile, withProof } from "./proofs.js";
 
 export const DEFAULT_API = "https://api.settlewatch.com";
 export const DEFAULT_BOARD = "https://settlewatch.com/";
@@ -32,6 +38,10 @@ export class PaymentBlocked extends Error {
  * @param {"allow"|"block"} [opts.onUnknown="allow"]  sellers the board has never seen
  * @param {"allow"|"block"} [opts.onError="allow"]    the check itself failed (network, board down)
  * @param {number} [opts.cacheSeconds=86400]
+ * @param {boolean} [opts.dnsProofs=true]  check the seller's DNS payout proof live (cached by its TTL)
+ * @param {"block"|"allow"} [opts.onProofMismatch="block"]  the seller's DNS proof doesn't list the address
+ *        (use "allow" only for sellers that quote a fresh address for every payment)
+ * @param {string} [opts.doh]  DNS-over-HTTPS JSON endpoint (default Cloudflare)
  * @param {(result: object) => void} [opts.onResult]  called with every verdict (for logging)
  * @param {typeof fetch} [opts.fetch]
  * @param {string} [opts.api]
@@ -40,9 +50,11 @@ export class PaymentBlocked extends Error {
 export function withTrustGuard(client, opts = {}) {
   const o = {
     mode: "paid", onCaution: "allow", onUnknown: "allow", onError: "allow", cacheSeconds: 86400,
+    dnsProofs: true, onProofMismatch: "block",
     api: DEFAULT_API, board: DEFAULT_BOARD, fetch: globalThis.fetch, ...opts,
   };
   const cache = new Map();
+  const proofs = new ProofCache({ fetch: o.fetch, doh: o.doh, verify: verifySig });
   let paidFetch = null;
 
   async function lookup(target, payTo) {
@@ -50,7 +62,14 @@ export function withTrustGuard(client, opts = {}) {
       const res = await o.fetch(`${o.board}seller/${target.host}.json`);
       if (res.status === 404) return verdict(target, null, payTo, o.board);
       if (!res.ok) throw new Error(`board returned HTTP ${res.status}`);
-      return verdict(target, await res.json(), payTo, o.board);
+      const seller = await res.json();
+      const result = verdict(target, seller, payTo, o.board);
+      // The board's file says the address contradicts the seller's proof: ask DNS live, the seller may have rotated.
+      if (o.dnsProofs && result.pay_to?.contradicts_seller_proof) {
+        const live = await proofs.check(target.host, payTo, { fresh: true });
+        return reconcile(result, live, (p) => verdict(target, withProof(seller, p), payTo, o.board));
+      }
+      return result;
     }
     if (!paidFetch) {
       const { wrapFetchWithPayment } = await import("@x402/fetch");
@@ -77,14 +96,24 @@ export function withTrustGuard(client, opts = {}) {
   client.onBeforePaymentCreation(async ({ paymentRequired, selectedRequirements }) => {
     const url = paymentRequired?.resource?.url;
     if (!url || url.startsWith(o.api)) return; // never check the checker
+    const payTo = selectedRequirements?.payTo;
+    const target = parseTarget(url);
+    // The seller's own DNS proof, read live (cached by TTL). A mismatch blocks without asking anyone else.
+    const live = o.dnsProofs && target ? await proofs.check(target.host, payTo) : null;
+    if (live?.status === "mismatch") {
+      const result = reconcile({ url, host: target.host, verdict: "avoid", reasons: [], pay_to: { address: payTo } }, live);
+      o.onResult?.(result);
+      if (o.onProofMismatch === "block") return { abort: true, reason: new PaymentBlocked(result).message };
+    }
     let result;
     try {
-      result = await check(url, selectedRequirements?.payTo);
+      result = await check(url, payTo);
     } catch (e) {
       o.onResult?.({ url, verdict: "error", reasons: [String(e.message || e)] });
       return o.onError === "block" ? { abort: true, reason: `trust check failed: ${e.message || e}` } : undefined;
     }
     if (!result) return;
+    if (live && live.status !== "mismatch") result = reconcile(result, live);
     o.onResult?.(result);
     const block =
       result.verdict === "avoid" ||
@@ -93,6 +122,17 @@ export function withTrustGuard(client, opts = {}) {
     if (block) return { abort: true, reason: new PaymentBlocked(result).message };
   });
   return client;
+}
+
+// Signature check for DNS proofs, when viem is installed (it comes with @x402/evm). A smart-contract
+// wallet's signature doesn't recover to its address without a chain call: that counts as unknown, not invalid.
+let viem;
+async function verifySig(address, message, signature) {
+  if (!address.startsWith("0x")) return null;
+  if (viem === undefined) viem = await import("viem").catch(() => null);
+  if (!viem) return null;
+  const who = await viem.recoverMessageAddress({ message, signature });
+  return who.toLowerCase() === address.toLowerCase() ? true : null;
 }
 
 /** Check one URL yourself (free mode, no payment). */
