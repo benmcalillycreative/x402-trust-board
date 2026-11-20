@@ -225,7 +225,13 @@ Exceptions verifiers should handle:
   SSH host keys) and hold a newly listed address for a while before it counts (Settle Watch: 72 hours),
   trusting the earlier ones meanwhile and alerting anyone watching the seller. This applies to DNS and the
   file alike. A planned rotation passes untouched: list the new address next to the old one, wait out the
-  hold, switch `payTo`, then remove the old one. First-time proofs aren't held; there's nothing to compare.
+  hold, switch `payTo`, then remove the old one.
+- A domain's first proof has no earlier proof to compare against, but a monitor may still have the
+  addresses the endpoint quoted before it. If the first proof names an address the endpoint wasn't already
+  asking for, Settle Watch holds it the same way (a hijacker could swap the address and publish a "first"
+  proof in one move). A first proof for the address already in use, or from a host with no history, counts
+  at once. A proof binds an address to whoever runs the domain; it says nothing about whether that party is
+  honest, which is what the rest of the board's record is for.
 - There is no expiry field: a stale proof is removed, not timed out.
 
 ## 8. Security considerations

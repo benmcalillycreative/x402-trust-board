@@ -185,6 +185,9 @@ class DnsDecides(unittest.TestCase):
         self.assertEqual(flags, {"payout_mismatch"}, "the attacker's self-signed file entry doesn't clear the check")
 
 
+from x402trust.db import SCHEMA as SCHEMA_DB  # noqa: E402
+
+
 class FileRotationHold(unittest.TestCase):
     """A new address in a seller's proof waits HOLD_HOURS before it counts, if the host already had a proven address:
     a hijacked server (file) or domain (DNS) can publish and sign its own, so the board keeps trusting the old one."""
@@ -226,6 +229,23 @@ class FileRotationHold(unittest.TestCase):
         # Already on the board before this table existed: first check after the update sets a baseline, no hold.
         self.check("api.old.com", [("site", ADDR, "wallet")], "2026-11-19T00:00:00Z")
         self.assertEqual(payout.load(self.conn, "2026-11-19T01:00:00Z")["api.old.com"], {ADDR: "site_signed"})
+
+    def test_first_proof_for_a_new_address_is_held_if_the_host_quoted_another(self):
+        """Hijack + a "first" proof in one move: the endpoint was asking for ADDR, now asks for OTHER and proves it."""
+        self.conn.executescript(SCHEMA_DB)
+        self.conn.execute("INSERT INTO endpoints (resource, host, first_seen, last_seen) VALUES (?,?,?,?)",
+                          ("https://api.shop.com/x", "api.shop.com", "2026-10-01T00:00:00Z", "2026-11-19T00:00:00Z"))
+        for ts, addr in [("2026-11-10T00:00:00Z", ADDR), ("2026-11-18T00:00:00Z", ADDR), ("2026-11-19T00:30:00Z", OTHER)]:
+            self.conn.execute("INSERT INTO probes (resource, ts, outcome, quoted_pay_to) VALUES (?,?,?,?)",
+                              ("https://api.shop.com/x", ts, "healthy", addr))
+        self.check("api.shop.com", [("site", OTHER, "wallet")], "2026-11-19T01:00:00Z")
+        self.assertEqual(payout.load(self.conn, "2026-11-19T02:00:00Z")["api.shop.com"], {})
+        self.assertEqual(payout.held(self.conn, "2026-11-19T02:00:00Z"), {"api.shop.com": [OTHER]})
+        self.assertEqual(payout.load(self.conn, "2026-11-22T01:00:01Z")["api.shop.com"], {OTHER: "site_signed"})
+        # Proving the address it was already quoting isn't held.
+        self.check("api.shop.com", [("site", ADDR, "wallet")], "2026-11-19T01:00:00Z")
+        self.conn.execute("DELETE FROM payout_seen WHERE address=?", (OTHER,))
+        self.assertEqual(payout.load(self.conn, "2026-11-19T02:00:00Z")["api.shop.com"], {ADDR: "site_signed"})
 
     def test_stale_anchor_does_not_hold(self):
         self.check("api.shop.com", [("site", ADDR, "wallet")], "2026-09-01T00:00:00Z")

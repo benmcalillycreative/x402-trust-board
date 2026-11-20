@@ -413,13 +413,39 @@ def load(conn, now=None):
             "%Y-%m-%dT%H:%M:%SZ")
         anchors = {a: lv for a, lv, fs, ls in seen if a not in held and fs < start and ls >= anchor_from}
         if not anchors:
-            continue  # first proof this host has published: nothing to compare against
+            # The host's first proof. Nothing to compare it against except what the endpoint was asking to be
+            # paid at before it appeared: a hijacker who swaps the address and publishes a "first" proof for
+            # it in the same move shouldn't come out verified. Hold it if it names an address the host wasn't
+            # quoting; the usual switched-wallet checks apply meanwhile. A seller who proves the address it was
+            # already using, or a brand-new host with no history, isn't held.
+            quotes = quoted_before(conn, host, anchor_from, start)
+            new = set()
+            for a in held:
+                began = min([ts for ts, q in quotes if q == a] + [start])  # when the host started asking for it
+                if any(q != a for ts, q in quotes if ts < began):
+                    new.add(a)
+            if new:
+                out[host] = {a: lv for a, lv in out[host].items() if a not in new}
+            continue
         kept = {a: lv for a, lv in out[host].items() if a not in held}
         for a, lv in anchors.items():
             if a not in kept or LEVELS[lv] > LEVELS[kept[a]]:
                 kept[a] = lv
         out[host] = kept
     return out
+
+
+def quoted_before(conn, host, since, until):
+    """[(ts, address)] the host's endpoints asked to be paid at between two times (empty without probe data)."""
+    try:
+        rows = conn.execute(
+            """SELECT p.ts, p.quoted_pay_to FROM probes p JOIN endpoints e USING (resource)
+               WHERE (e.host = ? OR e.host LIKE ?) AND p.ts >= ? AND p.ts < ? AND p.quoted_pay_to IS NOT NULL
+               ORDER BY p.ts""",
+            (host, host + ":%", since, until)).fetchall()
+    except Exception:
+        return []
+    return [(ts, norm_addr(q)) for ts, q in rows]
 
 
 def held(conn, now=None):
