@@ -166,6 +166,28 @@ may need to revoke under pressure should keep the TTL short.
 The reference implementation is `proofs.js` in `x402-trust-guard`, shared with the Settle Watch check
 API.
 
+### 6.2 Outcomes
+
+A check reports exactly one of these. Most checks today end in `absent`, so the distinction matters most
+there.
+
+| Outcome | When | What the client does |
+|---|---|---|
+| `verified` | A proof exists for the domain and lists `P` (level per section 5) | Pay. May show the level and the proof's `Issued` date |
+| `mismatch` | Proofs exist and `P` isn't in any of them, after the live re-check (6.1, step 3) | Don't pay without confirmation (step 4) |
+| `malformed` | A `_x402-payto` record or file exists but can't be parsed, names the wrong domain, or carries a signature that recovers to someone else | Report it to the seller; decide as if `absent`. It never raises a level and never blocks on its own |
+| `absent` | No proof published | Normal policy. Not a verdict on the seller |
+| `unchecked` | The check didn't run or couldn't finish (offline, policy, DNS timeout) | Normal policy. Never reported as `absent` or `mismatch` |
+
+`absent` must never be treated as `mismatch`: proofs are opt-in, and blocking the sellers who haven't
+published one would stop anyone from adopting them. `unchecked` must never be reported as `verified`.
+
+The age of a proof is information, not an outcome. A verifier SHOULD report `Issued` with a `verified`
+result and MAY let the client set a maximum age, but age MUST NOT soften a `mismatch`: a record that is
+still published and doesn't list `P` looks the same whether the seller rotated carelessly or the endpoint
+was hijacked, and the second is what the proof exists to catch. Sellers avoid the false alarm by adding
+the new address before switching (section 7).
+
 Exceptions verifiers should handle:
 
 - **Per-payment addresses.** Some sellers quote a fresh address every time (deposit-address or payment
