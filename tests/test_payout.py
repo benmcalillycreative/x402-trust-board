@@ -186,8 +186,8 @@ class DnsDecides(unittest.TestCase):
 
 
 class FileRotationHold(unittest.TestCase):
-    """Without DNS, a new address in the site file waits HOLD_HOURS before it counts, if the host already had a
-    proven address: a hijacked server can rewrite and re-sign the file, so the board keeps trusting the old one."""
+    """A new address in a seller's proof waits HOLD_HOURS before it counts, if the host already had a proven address:
+    a hijacked server (file) or domain (DNS) can publish and sign its own, so the board keeps trusting the old one."""
 
     def setUp(self):
         import sqlite3
@@ -233,10 +233,24 @@ class FileRotationHold(unittest.TestCase):
         self.check("api.shop.com", [("site", OTHER, "wallet")], "2026-11-19T00:00:00Z")
         self.assertEqual(payout.load(self.conn, "2026-11-19T01:00:00Z")["api.shop.com"], {OTHER: "site_signed"})
 
-    def test_dns_rotation_is_not_held(self):
+    def test_dns_swap_is_held_too(self):
+        """A registrar takeover lets someone publish their own signed DNS record; the board remembers the old one."""
         self.check("api.shop.com", [("dns", ADDR, "wallet")], "2026-11-10T00:00:00Z")
         self.check("api.shop.com", [("dns", OTHER, "wallet")], "2026-11-19T00:00:00Z")
-        self.assertEqual(payout.load(self.conn, "2026-11-19T01:00:00Z")["api.shop.com"], {OTHER: "dns_signed"})
+        self.assertEqual(payout.load(self.conn, "2026-11-19T01:00:00Z")["api.shop.com"], {ADDR: "dns_signed"})
+        self.assertEqual(payout.held(self.conn, "2026-11-19T01:00:00Z"), {"api.shop.com": [OTHER]})
+        self.assertEqual(payout.load(self.conn, "2026-11-22T01:00:00Z")["api.shop.com"], {OTHER: "dns_signed"})
+
+    def test_planned_rotation_passes(self):
+        """List the new address next to the old one, wait out the hold, then switch: no mismatch at any point."""
+        self.check("api.shop.com", [("dns", ADDR, "wallet")], "2026-11-01T00:00:00Z")
+        self.check("api.shop.com", [("dns", ADDR, "wallet"), ("dns", OTHER, "wallet")], "2026-11-10T00:00:00Z")
+        self.assertEqual(payout.load(self.conn, "2026-11-10T01:00:00Z")["api.shop.com"], {ADDR: "dns_signed"})
+        self.check("api.shop.com", [("dns", ADDR, "wallet"), ("dns", OTHER, "wallet")], "2026-11-13T01:00:00Z")
+        self.assertEqual(payout.load(self.conn, "2026-11-13T01:00:00Z")["api.shop.com"],
+                         {ADDR: "dns_signed", OTHER: "dns_signed"})
+        self.check("api.shop.com", [("dns", OTHER, "wallet")], "2026-11-20T00:00:00Z")  # old one removed
+        self.assertEqual(payout.load(self.conn, "2026-11-20T01:00:00Z")["api.shop.com"], {OTHER: "dns_signed"})
 
 
 class CheckHost(unittest.TestCase):

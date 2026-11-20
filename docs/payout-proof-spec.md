@@ -204,17 +204,24 @@ Exceptions verifiers should handle:
 - TTL: 3600 seconds is a sensible default. Lower it (to 300, say) a day before a planned change and
   raise it again after.
 - To revoke: remove the record or entry. Verifiers SHOULD re-check at least daily.
-- File-only sellers: a verifier that keeps history MAY hold a new address in the well-known file for a
-  while (Settle Watch: 72 hours) when the host already had a proven address, trusting the old one until
-  then. DNS rotations aren't held. A seller who needs instant rotation should publish DNS.
+- Verifiers that keep history SHOULD remember the addresses a domain has proven (trust on first use, like
+  SSH host keys) and hold a newly listed address for a while before it counts (Settle Watch: 72 hours),
+  trusting the earlier ones meanwhile and alerting anyone watching the seller. This applies to DNS and the
+  file alike. A planned rotation passes untouched: list the new address next to the old one, wait out the
+  hold, switch `payTo`, then remove the old one. First-time proofs aren't held; there's nothing to compare.
 - There is no expiry field: a stale proof is removed, not timed out.
 
 ## 8. Security considerations
 
 - **Server or deployment compromise:** defeated by DNS proofs; the well-known file is only as strong as
   the web server.
-- **DNS compromise:** defeated by requiring a signature (`dns_signed`), since the attacker would also
-  need the payout wallet's key, at which point they already control the funds.
+- **DNS or registrar compromise:** someone who takes over the domain can publish their own record and sign
+  it with their own wallet, so a signature alone doesn't stop them; it proves the listed wallet agreed, not
+  that it's the same wallet as last week. What catches it is continuity: a verifier that remembers the
+  domain's earlier addresses sees a new one appear and holds it (section 7), and watchers are alerted while
+  the board still trusts the old address. Clients without history (a fresh process) can't tell, which is
+  one reason to check against a monitor that keeps it. Registrar lock and 2FA on the registrar account
+  remain the seller's first defense.
 - **Server compromise plus a self-signed file:** an attacker who controls the web server can publish their
   own address in the well-known file, signed by their own wallet. That's why DNS takes precedence (section 6,
   step 1): with a DNS proof in place, a file-only address is a mismatch, not a match. A seller with no DNS

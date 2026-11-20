@@ -97,11 +97,12 @@ CREATE TABLE IF NOT EXISTS payout_seen (
 );
 """
 
-# A new address in a host's .well-known file only counts after this long, if the host already had a proven
-# address before it. Whoever takes over a web server can rewrite the file and sign it with a wallet of their
-# own; holding the new address means the board keeps trusting the old one (so quotes of the new one show as
-# a mismatch) while watchers get the wallet-change alert. DNS proofs aren't held: changing DNS takes control
-# of the domain, which is the whole point of them. First-time proofs aren't held either (nothing to compare).
+# A new address in a host's payout proof only counts after this long, if the host already had a proven
+# address before it (trust on first use, like SSH host keys). Whoever takes over a web server can rewrite the
+# .well-known file and sign it with a wallet of their own; whoever takes over the domain at the registrar can
+# do the same with DNS. Holding the new address means the board keeps trusting the old one meanwhile (quotes of
+# the new one show as a mismatch) while watchers get the wallet-change alert. A planned rotation passes: list
+# the new address alongside the old one, wait out the hold, then switch. First-time proofs aren't held.
 HOLD_HOURS = 72
 ANCHOR_DAYS = 30  # an earlier address only anchors the host if a check saw it this recently
 
@@ -381,7 +382,7 @@ def load(conn, now=None):
     the file (and sign it with a wallet of their own), but not the domain's DNS.
 
     Without DNS, a file address that's new on a host that already had a proven address is held for
-    HOLD_HOURS: the earlier addresses keep counting instead (see HOLD_HOURS)."""
+    HOLD_HOURS: the earlier addresses keep counting instead (see HOLD_HOURS). Same for DNS addresses."""
     conn.executescript(SCHEMA)
     out, in_dns = {}, {}
     for host, source, address, signer in conn.execute("SELECT host, source, address, signer FROM payout_proofs"):
@@ -397,9 +398,10 @@ def load(conn, now=None):
         out[host] = {a: lv for a, lv in out[host].items() if a in addrs}
     now = datetime.strptime(now or db.now(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     hold_from = (now - timedelta(hours=HOLD_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    for host in [h for h in out if h not in in_dns]:
-        seen = conn.execute("SELECT address, level, first_seen, last_seen FROM payout_seen WHERE host=? AND source='site'",
-                            (host,)).fetchall()
+    for host in out:
+        source = "dns" if host in in_dns else "site"
+        seen = conn.execute("SELECT address, level, first_seen, last_seen FROM payout_seen WHERE host=? AND source=?",
+                            (host, source)).fetchall()
         first = {}
         for address, _level, first_seen, _last in seen:
             first[address] = min(first.get(address, first_seen), first_seen)
@@ -421,13 +423,14 @@ def load(conn, now=None):
 
 
 def held(conn, now=None):
-    """{host: [address, ...]} for file addresses load() is holding right now (for `payout HOST` and pages)."""
+    """{host: [address, ...]} for new addresses load() is holding right now (for `payout HOST` and pages)."""
     conn.executescript(SCHEMA)
     counted = load(conn, now)
     with_dns = {h for (h,) in conn.execute("SELECT DISTINCT host FROM payout_proofs WHERE source='dns'")}
     out = {}
-    for host, address, signer in conn.execute("SELECT host, address, signer FROM payout_proofs WHERE source='site'"):
-        if host not in with_dns and level_of("site", signer) and address not in counted.get(host, {}):
+    for host, address, source, signer in conn.execute("SELECT host, address, source, signer FROM payout_proofs"):
+        if source == ("dns" if host in with_dns else "site") and level_of(source, signer) \
+                and address not in counted.get(host, {}) and address not in out.get(host, []):
             out.setdefault(host, []).append(address)
     return out
 
@@ -444,6 +447,6 @@ def describe(conn, host):
                    "unverifiable": "can't check signature"}[r[4]]
         lines.append(f"  {r[0]:<8} {r[2]}  {verdict}" + (f": {r[5]}" if r[5] else ""))
     for address in held(conn).get(host, []):
-        lines.append(f"  HELD     {address}  new in the site file; counts {HOLD_HOURS}h after first seen "
+        lines.append(f"  HELD     {address}  new in the payout proof; counts {HOLD_HOURS}h after first seen "
                      "(the earlier address keeps counting until then)")
     return "\n".join(lines)
