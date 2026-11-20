@@ -175,6 +175,34 @@ test("proof cache: TTL, a live re-check only on a miss, rate-limited, shared hos
   assert.equal(reconcile({ verdict: "ok", reasons: [], pay_to: { address: SWAP } }, { status: "error" }).verdict, "ok");
 });
 
+test("proof cache reports the spec's outcomes and the signature status (spec 6.2)", async () => {
+  let txt = [];
+  const f = async () => new Response(JSON.stringify({ Status: 0, Answer: txt.map((d) => ({ type: 16, TTL: 600, data: `"${d}"` })) }));
+  const run = async (records, verify, payTo = GOOD) => {
+    txt = records;
+    return new ProofCache({ fetch: f, doh: "https://doh.test/q", verify, now: () => 0 }).check("seller.example", payTo);
+  };
+  assert.equal((await run([], null)).outcome, "absent");
+  assert.equal((await run(["v=spf1 -all"], null)).outcome, "absent", "other TXT records aren't proofs");
+  assert.equal((await run(["v=x402payto1; d=2026-11-19"], null)).outcome, "malformed", "no address");
+  assert.equal((await run(["v=x402payto1; a=not-an-address"], null)).outcome, "malformed");
+  let r = await run([`v=x402payto1; a=${GOOD}; d=2026-11-19; s=0xabc`], async () => true);
+  assert.deepEqual([r.outcome, r.level, r.signature, r.issued], ["verified", "dns_signed", "valid", "2026-11-19"]);
+  r = await run([`v=x402payto1; a=${GOOD}; d=2026-11-19; s=0xabc`], async () => null);
+  assert.deepEqual([r.outcome, r.level, r.signature], ["verified", "dns", "unverifiable"], "a contract wallet isn't invalid");
+  r = await run([`v=x402payto1; a=${GOOD}; d=2026-11-19; s=0xabc`], async () => false);
+  assert.deepEqual([r.outcome, r.level, r.signature], ["verified", "dns", "invalid"], "a bad signature still binds the address");
+  r = await run([`v=x402payto1; a=${GOOD}`], null);
+  assert.deepEqual([r.outcome, r.signature], ["verified", "none"]);
+  assert.equal((await run([`v=x402payto1; a=${GOOD}; s=0xabc`], async () => true, NEW)).outcome, "mismatch",
+    "a mismatch whatever the signature says");
+  const failing = new ProofCache({ fetch: async () => { throw new Error("offline"); } });
+  assert.equal((await failing.check("seller.example", GOOD)).outcome, "unchecked");
+  const out = reconcile({ verdict: "ok", reasons: [], pay_to: { address: GOOD } },
+    { status: "match", outcome: "verified", level: "dns", signature: "invalid", issued: "2026-11-19" });
+  assert.deepEqual([out.verdict, out.dns_outcome, out.dns_signature, out.dns_issued], ["ok", "verified", "invalid", "2026-11-19"]);
+});
+
 test("proofs.js is the same file in the API and the guard", () => {
   const here = fs.readFileSync(new URL("../proofs.js", import.meta.url), "utf8");
   const api = fs.readFileSync(new URL("../../../worker/src/proofs.js", import.meta.url), "utf8");

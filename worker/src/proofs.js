@@ -50,13 +50,17 @@ export function joinTxt(data) {
   return parts.length ? parts.join("") : String(data);
 }
 
+const ADDRESS = /^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/; // EVM, or Solana (base58)
+
+/** One TXT record -> a proof, { malformed: true } for an x402payto1 record that can't be used, or null. */
 export function parseRecord(text, domain) {
   const f = {};
   for (const part of text.split(";")) {
     const i = part.indexOf("=");
     if (i > 0) f[part.slice(0, i).trim().toLowerCase()] = part.slice(i + 1).trim();
   }
-  if (f.v !== "x402payto1" || !f.a) return null;
+  if (f.v !== "x402payto1") return null; // some other TXT record at that name
+  if (!f.a || !ADDRESS.test(f.a)) return { malformed: true };
   return { domain, address: f.a, issued: f.d || null, signature: f.s || null };
 }
 
@@ -83,42 +87,59 @@ export class ProofCache {
     if (j.Status !== 0 && j.Status !== 3) throw new Error(`DNS lookup failed (status ${j.Status})`);
     const answers = (j.Answer || []).filter((a) => a.type === 16);
     const ttl = Math.min(...answers.map((a) => a.TTL), ...(j.Authority || []).map((a) => a.TTL), MAX_SECONDS);
-    return { records: answers.map((a) => parseRecord(joinTxt(a.data), name)).filter(Boolean), ttl };
+    const parsed = answers.map((a) => parseRecord(joinTxt(a.data), name)).filter(Boolean);
+    return { records: parsed.filter((r) => !r.malformed), malformed: parsed.some((r) => r.malformed), ttl };
   }
 
   async load(host) {
-    const proofs = new Map();
+    const proofs = new Map(); // address -> level
+    const details = new Map(); // address -> { signature, issued } (spec 6.2: signature status rides with the proof)
     let ttl = MAX_SECONDS;
+    let malformed = false;
     for (const name of dnsNames(host)) {
       const r = await this.query(name);
       ttl = Math.min(ttl, r.ttl);
+      malformed = malformed || r.malformed;
       for (const rec of r.records) {
-        let level = "dns";
+        let signature = rec.signature ? "unverifiable" : "none";
         if (rec.signature && rec.issued && this.verify) {
           try {
-            if ((await this.verify(rec.address, message(rec.domain, rec.address, rec.issued), rec.signature)) === true) level = "dns_signed";
+            const ok = await this.verify(rec.address, message(rec.domain, rec.address, rec.issued), rec.signature);
+            // false only when the verifier is sure (it can check contract wallets); null means "can't tell here".
+            if (ok === true) signature = "valid";
+            else if (ok === false) signature = "invalid";
           } catch { /* unverifiable here; still a DNS proof */ }
         }
         const key = norm(rec.address);
-        if (proofs.get(key) !== "dns_signed") proofs.set(key, level);
+        if (proofs.get(key) === "dns_signed") continue;
+        proofs.set(key, signature === "valid" ? "dns_signed" : "dns");
+        details.set(key, { signature, issued: rec.issued });
       }
     }
     const now = this.now();
-    const entry = { proofs, fetchedAt: now, until: now + Math.max(MIN_SECONDS, Math.min(ttl, MAX_SECONDS)) * 1000 };
+    const entry = { proofs, details, malformed, fetchedAt: now,
+      until: now + Math.max(MIN_SECONDS, Math.min(ttl, MAX_SECONDS)) * 1000 };
     this.entries.set(norm(host), entry);
     return entry;
   }
 
   /**
-   * Is payTo in the seller's live DNS proofs?
-   *   { status: "none" }                         no DNS proof (absence proves nothing), or shared hosting
-   *   { status: "match", level }                 it's proven
-   *   { status: "mismatch", proven, rechecked }  proofs exist and this address isn't in them
-   *   { status: "error", error }                 DNS couldn't be read; decide on other evidence
+   * Is payTo in the seller's live DNS proofs? `outcome` uses the spec's names (section 6.2); `status` is the
+   * older field, kept for compatibility.
+   *   outcome "absent"     status "none"      no DNS proof (absence proves nothing), or shared hosting
+   *   outcome "malformed"  status "none"      an x402payto1 record exists but can't be used; decide as if absent
+   *   outcome "verified"   status "match"     it's proven: { level, signature, issued }
+   *   outcome "mismatch"   status "mismatch"  proofs exist and this address isn't in them: { proven, rechecked }
+   *   outcome "unchecked"  status "error"     DNS couldn't be read; decide on other evidence
+   * signature: "valid" | "invalid" | "unverifiable" | "none" (a contract wallet without a chain check is
+   * "unverifiable", never "invalid").
    * fresh: true skips the cache (still rate-limited per domain).
    */
   async check(host, payTo, { fresh = false } = {}) {
-    if (!payTo || !dnsNames(host).length) return { status: "none" };
+    if (!payTo || !dnsNames(host).length) return { status: "none", outcome: "absent" };
+    const none = (e) => ({ status: "none", outcome: e.malformed ? "malformed" : "absent" });
+    const match = (e) => ({ status: "match", outcome: "verified", level: e.proofs.get(norm(payTo)),
+      ...(e.details?.get(norm(payTo)) || {}) });
     const key = norm(host);
     try {
       let entry = this.entries.get(key);
@@ -128,17 +149,17 @@ export class ProofCache {
         entry = await this.load(host);
         rechecked = true;
       }
-      if (!entry.proofs.size) return { status: "none" };
-      if (entry.proofs.has(norm(payTo))) return { status: "match", level: entry.proofs.get(norm(payTo)) };
+      if (!entry.proofs.size) return none(entry);
+      if (entry.proofs.has(norm(payTo))) return match(entry);
       if (!rechecked && canRefetch) {
         entry = await this.load(host); // the only path that pays for a live lookup
         rechecked = true;
-        if (entry.proofs.has(norm(payTo))) return { status: "match", level: entry.proofs.get(norm(payTo)) };
-        if (!entry.proofs.size) return { status: "none" };
+        if (entry.proofs.has(norm(payTo))) return match(entry);
+        if (!entry.proofs.size) return none(entry);
       }
-      return { status: "mismatch", proven: [...entry.proofs.keys()], rechecked };
+      return { status: "mismatch", outcome: "mismatch", proven: [...entry.proofs.keys()], rechecked };
     } catch (e) {
-      return { status: "error", error: String(e.message || e) };
+      return { status: "error", outcome: "unchecked", error: String(e.message || e) };
     }
   }
 }
@@ -150,6 +171,13 @@ const ROTATED = "The seller's DNS payout proof lists this address now (it change
 export const withProof = (seller, proof) =>
   seller ? { ...seller, payout: { ...(seller.payout || {}), proofs: [...(seller.payout?.proofs || []), proof] } } : seller;
 
+/** The spec-named fields of a live check, for the result (spec 6.2). */
+const liveFields = (live) => ({
+  dns_outcome: live.outcome || null,
+  ...(live.signature ? { dns_signature: live.signature } : {}),
+  ...(live.issued ? { dns_issued: live.issued } : {}),
+});
+
 /**
  * Combine a verdict built from the board's data (refreshed every few hours) with a live DNS check.
  *   - The board saw a contradiction, but the address is in the seller's DNS proof now (a rotation since
@@ -160,12 +188,13 @@ export const withProof = (seller, proof) =>
 export function reconcile(result, live, rerun = null) {
   if (!result || !result.pay_to || !live) return result;
   if (live.status === "match" && result.pay_to.contradicts_seller_proof) {
-    if (!rerun) return { ...result, dns_live: live.status };
+    if (!rerun) return { ...result, dns_live: live.status, ...liveFields(live) };
     const out = rerun({ address: result.pay_to.address, level: live.level });
     return { ...out, verdict: out.verdict === "ok" ? "caution" : out.verdict, reasons: [...(out.reasons || []), ROTATED],
-      dns_live: live.status };
+      dns_live: live.status, ...liveFields(live) };
   }
-  const out = { ...result, reasons: [...(result.reasons || [])], pay_to: { ...result.pay_to }, dns_live: live.status };
+  const out = { ...result, reasons: [...(result.reasons || [])], pay_to: { ...result.pay_to }, dns_live: live.status,
+    ...liveFields(live) };
   if (live.status === "match" && !out.pay_to.proven_by_seller) out.pay_to.proven_by_seller = live.level;
   if (live.status === "mismatch") {
     out.pay_to.contradicts_seller_proof = true;

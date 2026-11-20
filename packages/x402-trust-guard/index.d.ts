@@ -10,6 +10,12 @@ export interface CheckResult {
   board: string;
   /** Present when the seller's DNS payout proof was read live: none | match | mismatch | error. */
   dns_live?: "none" | "match" | "mismatch" | "error";
+  /** The live DNS check in the spec's terms (payout-proof spec, section 6.2). */
+  dns_outcome?: "verified" | "mismatch" | "malformed" | "absent" | "unchecked" | null;
+  /** Signature status of the DNS proof that listed this address (only with dns_outcome "verified"). */
+  dns_signature?: "valid" | "invalid" | "unverifiable" | "none";
+  /** The proof's Issued date (reported, never used to soften a mismatch). */
+  dns_issued?: string;
 }
 export interface GuardOptions {
   mode?: "paid" | "free";

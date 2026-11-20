@@ -26,6 +26,10 @@ cached by the record's TTL (at most 24 hours) and only repeated live when the qu
 cached set, so the normal path adds no DNS round trip. A legitimate rotation passes that re-check (as
 `caution`, until the board catches up); a swapped address doesn't. If DNS can't be reached, it never blocks
 on that alone. [Cache policy](https://github.com/benmcalillycreative/x402-trust-board/blob/main/docs/payout-proof-spec.md#61-caching).
+The result says what the DNS check found in the spec's terms: `dns_outcome` is `verified`, `mismatch`,
+`malformed`, `absent` or `unchecked`, with the proof's `dns_signature` (`valid`, `invalid`, `unverifiable`
+or `none`) and `dns_issued` date when it's verified. Only `mismatch` blocks.
+[Outcomes](https://github.com/benmcalillycreative/x402-trust-board/blob/main/docs/payout-proof-spec.md#62-outcomes).
 
 Price problems (asking well above the listing), flaky uptime, low grades and thin history come back as `caution`,
 which you can choose to block too (`onCaution: "block"`).
