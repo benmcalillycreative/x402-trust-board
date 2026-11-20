@@ -175,12 +175,29 @@ there.
 |---|---|---|
 | `verified` | A proof exists for the domain and lists `P` (level per section 5) | Pay. May show the level and the proof's `Issued` date |
 | `mismatch` | Proofs exist and `P` isn't in any of them, after the live re-check (6.1, step 3) | Don't pay without confirmation (step 4) |
-| `malformed` | A `_x402-payto` record or file exists but can't be parsed, names the wrong domain, or carries a signature that recovers to someone else | Report it to the seller; decide as if `absent`. It never raises a level and never blocks on its own |
+| `malformed` | A `_x402-payto` record or file exists but can't be parsed or names another domain | Report it to the seller; decide as if `absent`. It never blocks on its own |
 | `absent` | No proof published | Normal policy. Not a verdict on the seller |
 | `unchecked` | The check didn't run or couldn't finish (offline, policy, DNS timeout) | Normal policy. Never reported as `absent` or `mismatch` |
 
 `absent` must never be treated as `mismatch`: proofs are opt-in, and blocking the sellers who haven't
 published one would stop anyone from adopting them. `unchecked` must never be reported as `verified`.
+
+**Signature status is reported alongside the outcome, not as one.** A record that parses and lists
+addresses binds them to the domain whatever its signature says, because the binding comes from whoever
+controls the DNS (or the site). So `verified` and `mismatch` are decided on the address list, and each
+proof carries its own signature status:
+
+| Signature | Meaning | Effect |
+|---|---|---|
+| `valid` | Recovers to the listed address (or passes ERC-1271 for a contract wallet) | Raises the level to `*_signed` |
+| `invalid` | Checked, and doesn't verify for the listed address | Level stays unsigned; report it to the seller |
+| `unverifiable` | Couldn't be checked here (a contract wallet and no chain access) | Level stays unsigned; not a failure |
+| `none` | No signature | Level stays unsigned |
+
+An `invalid` signature is worth surfacing, and a client MAY treat it more strictly than an unsigned proof.
+It is rarely an attack, though: someone who controls the domain can sign with a wallet of their own and
+pass. In practice it means the seller signed with the wrong wallet or the wrong message. Clients without
+chain access MUST report a contract wallet's signature as `unverifiable`, never `invalid`.
 
 The age of a proof is information, not an outcome. A verifier SHOULD report `Issued` with a `verified`
 result and MAY let the client set a maximum age, but age MUST NOT soften a `mismatch`: a record that is
