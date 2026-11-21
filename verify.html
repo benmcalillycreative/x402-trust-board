@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify Your Payout</title>
+<meta name="description" content="Prove the wallet your x402 endpoint gets paid to is really yours. Free, takes five minutes.">
+<style>
+:root {
+  --bg:#f7f6f2; --panel:#ffffff; --ink:#1b1b18; --muted:#6b6a63; --line:#e4e2da;
+  --accent:#1f5f4a; --chip:#efede6; --good:#1f6b45; --goodbg:#e3f3ea; --red:#b3261e; --redbg:#fbe9e7;
+  --code:#f1efe8;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#141412; --panel:#1c1c19; --ink:#ecebe5; --muted:#9d9b92; --line:#2e2d29;
+  --accent:#6cc2a1; --chip:#262622; --good:#7fd6a6; --goodbg:#16301f; --red:#ff8a80; --redbg:#3a1c1a;
+  --code:#23231f;
+} }
+:root[data-theme="dark"] {
+  --bg:#141412; --panel:#1c1c19; --ink:#ecebe5; --muted:#9d9b92; --line:#2e2d29;
+  --accent:#6cc2a1; --chip:#262622; --good:#7fd6a6; --goodbg:#16301f; --red:#ff8a80; --redbg:#3a1c1a;
+  --code:#23231f;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink);
+  font:15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width:760px; margin:0 auto; padding:28px 16px 64px; }
+a { color:var(--accent); }
+h1 { font-size:26px; margin:0 0 6px; letter-spacing:-.01em; }
+h2 { font-size:18px; margin:34px 0 8px; }
+h3 { font-size:15px; margin:22px 0 6px; }
+.sub { color:var(--muted); margin:0 0 22px; }
+.back { font-size:14px; display:inline-block; margin-bottom:14px; }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; }
+.steps { counter-reset:step; display:grid; gap:14px; }
+.step { position:relative; padding-left:40px; }
+.step::before { counter-increment:step; content:counter(step); position:absolute; left:0; top:0;
+  width:26px; height:26px; border-radius:50%; background:var(--accent); color:var(--panel);
+  display:grid; place-items:center; font-weight:700; font-size:13px; }
+label { display:block; font-weight:600; font-size:14px; margin:12px 0 4px; }
+.hint { color:var(--muted); font-size:13px; margin:2px 0 0; }
+input[type=text], input[type=date], textarea {
+  width:100%; padding:9px 11px; border-radius:8px; border:1px solid var(--line);
+  background:var(--bg); color:var(--ink); font:14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+textarea { min-height:70px; resize:vertical; }
+.row { display:flex; gap:10px; flex-wrap:wrap; }
+.row > div { flex:1 1 200px; }
+button { font:inherit; font-weight:600; padding:9px 14px; border-radius:8px; border:1px solid var(--accent);
+  background:var(--accent); color:var(--panel); cursor:pointer; }
+button.ghost { background:transparent; color:var(--accent); }
+button:disabled { opacity:.5; cursor:default; }
+pre { background:var(--code); border:1px solid var(--line); border-radius:8px; padding:12px;
+  overflow-x:auto; font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; margin:6px 0; white-space:pre-wrap; word-break:break-all; }
+code { font:13px ui-monospace, SFMono-Regular, Menlo, monospace; background:var(--code); padding:1px 4px; border-radius:4px; }
+.msg { font-size:13.5px; margin-top:8px; }
+.msg.ok { color:var(--good); } .msg.err { color:var(--red); }
+.chips { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; }
+.chip { font-size:12px; padding:2px 8px; border-radius:5px; background:var(--chip); color:var(--muted); }
+.chip.good { background:var(--goodbg); color:var(--good); }
+.chip.red { background:var(--redbg); color:var(--red); }
+.out { display:none; }
+.out.show { display:block; }
+table { width:100%; border-collapse:collapse; font-size:14px; }
+td, th { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+.note { color:var(--muted); font-size:13.5px; }
+</style></head>
+<body><main>
+<a class="back" href="./">← Back to the board</a>
+<h1>Verify your payout address</h1>
+<p class="sub">An x402 or MPP listing can name any wallet (or none), and nothing in either protocol proves the wallet getting paid belongs
+to whoever runs the endpoint. This page helps you prove it, for free, in about five minutes. Once you do, the board shows a
+green mark on your endpoints, and if one ever asks to be paid anywhere else, it gets flagged right away.</p>
+
+<div class="chips">
+  <span class="chip good">Payout address verified (domain DNS + wallet signature)</span>
+  <span class="chip good">Payout address verified (its site + wallet signature)</span>
+  <span class="chip">Payout address listed by its own site (not signed)</span>
+  <span class="chip red">Asks for payment to an address its own site doesn't list</span>
+</div>
+
+<h2>How it works</h2>
+<p>You publish two things that only the real owner could publish together:</p>
+<p><b>Your site or domain names the address.</b> Either a small file on the same host as your endpoints, or a DNS
+record on your domain. That shows whoever controls the site chose this wallet.</p>
+<p><b>The wallet signs a message naming your domain.</b> That shows whoever holds the wallet agrees. It's a free
+signature, not a transaction. Nothing is sent and no gas is spent.</p>
+<p>The board checks once a day. DNS is the stronger option: someone who breaks into a web server usually can't change your
+domain's DNS. If your endpoints live on shared hosting (onrender.com, workers.dev, vercel.app and similar), use the file.</p>
+
+<h2>Make your proof</h2>
+<div class="panel steps">
+  <div class="step">
+    <b>Where does it go?</b>
+    <label for="domain">Domain</label>
+    <input type="text" id="domain" placeholder="api.example.com" autocomplete="off" spellcheck="false">
+    <p class="hint">For the file: the exact host your endpoints run on. For DNS: that host or your main domain
+      (a record on example.com covers api.example.com too).</p>
+  </div>
+  <div class="step">
+    <b>Which wallet gets paid?</b>
+    <div class="row">
+      <div><label for="addr">Payout address</label>
+        <input type="text" id="addr" placeholder="0x…" autocomplete="off" spellcheck="false"></div>
+      <div style="flex:0 1 170px"><label for="issued">Date</label>
+        <input type="date" id="issued"></div>
+    </div>
+    <p class="hint">The address your 402 responses ask to be paid to.</p>
+  </div>
+  <div class="step">
+    <b>Sign this message with that wallet</b>
+    <pre id="message">Fill in the domain and address above.</pre>
+    <div class="row" style="margin-top:8px">
+      <div style="flex:0 0 auto"><button id="sign" disabled>Sign with my wallet</button></div>
+      <div style="flex:0 0 auto"><button class="ghost" id="copyMsg" disabled>Copy message</button></div>
+    </div>
+    <div class="msg" id="signStatus"></div>
+    <label for="sig">Signature</label>
+    <textarea id="sig" placeholder="0x… (filled in automatically when you sign above, or paste it here)" spellcheck="false"></textarea>
+    <p class="hint">No browser wallet? Sign the exact message with any wallet's "sign message" feature, or from a terminal:
+      <code>cast wallet sign --private-key $KEY "$(cat message.txt)"</code>. Smart wallets (like Coinbase Smart Wallet) work
+      too, as long as the wallet is deployed on Base.</p>
+  </div>
+  <div class="step">
+    <b>Publish one of these</b>
+    <div class="out" id="out">
+      <h3>Option A: a file on your site</h3>
+      <p class="note">Serve this at <code id="fileUrl"></code>, as JSON, with no redirect. Got more than one payout address?
+        Add each one to the <code>payTo</code> list.</p>
+      <pre id="fileOut"></pre>
+      <div class="row"><div style="flex:0 0 auto"><button class="ghost" id="copyFile">Copy</button></div>
+        <div style="flex:0 0 auto"><button class="ghost" id="dlFile">Download x402-payto.json</button></div></div>
+      <h3>Option B: a DNS record</h3>
+      <div id="dnsBlock">
+        <label>Type</label><pre>TXT</pre>
+        <label>Name</label><pre id="txtName"></pre>
+        <label>Value</label><pre id="txtValue"></pre>
+        <div class="row" style="margin-top:8px"><div style="flex:0 0 auto"><button class="ghost" id="copyTxt">Copy value</button></div></div>
+        <p class="note">One record per payout address. Some DNS providers want the name without your domain on the end
+          (just <code id="txtShort"></code>).</p>
+      </div>
+      <p class="note" id="dnsShared" style="display:none">This domain is on shared hosting, so a DNS record can't prove it's
+        yours. Use the file instead.</p>
+      <p class="note">After you publish, the board picks it up within a day.<span class="contact-line"> Want it checked right away? Email <a href="mailto:ben.mcalilly@gmail.com">ben.mcalilly@gmail.com</a>.</span></p>
+    </div>
+    <p class="note" id="outWaiting">Your file and DNS record appear here once there's a signature.</p>
+  </div>
+</div>
+
+<h2>The details</h2>
+<p>Anyone can check these proofs; nothing here depends on the board. This is the exact format.</p>
+<h3>The message</h3>
+<pre>x402 payout verification
+
+Domain: &lt;domain, lowercase&gt;
+Pay-to: &lt;address, lowercase&gt;
+Issued: &lt;YYYY-MM-DD&gt;</pre>
+<p class="note">Lines are separated by a single newline, with one blank line after the first. It's signed as an ordinary
+wallet message (EIP-191 <code>personal_sign</code>). Ordinary wallets are checked by recovering the signer; smart-contract
+wallets through ERC-1271 on Base.</p>
+<h3>The file: <code>https://&lt;host&gt;/.well-known/x402-payto.json</code></h3>
+<pre>{
+  "version": 1,
+  "domain": "api.example.com",
+  "payTo": [
+    {"address": "0x…", "issued": "2026-11-04", "signature": "0x…"}
+  ]
+}</pre>
+<p class="note"><code>domain</code> must be the exact host serving the file. A signature is optional; without one the
+address counts as listed by the site, but not verified.</p>
+<h3>The DNS record: <code>_x402-payto.&lt;domain&gt;</code></h3>
+<pre>v=x402payto1; a=0x…; d=2026-11-04; s=0x…</pre>
+<p class="note">Covers the domain and all its subdomains. Not accepted on shared-hosting domains.</p>
+<h3>What it proves, and what it doesn't</h3>
+<p class="note">It proves the site (or domain) and the wallet are controlled by the same party, and it lets the board catch
+any endpoint that asks to be paid somewhere else. It can't stop someone who has taken over both your web server and your
+wallet. If you use the file and your server is breached, an attacker could change the file too. That's why DNS counts as the
+stronger proof, and why the board still alerts on any change. Services that hand out a fresh deposit address for every
+payment can't use this, since there's no fixed address to sign.</p>
+<p class="note">This format is a proposal, not an official x402 standard. Feedback is welcome.</p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const SHARED = ["workers.dev","pages.dev","onrender.com","vercel.app","netlify.app","fly.dev","up.railway.app",
+  "railway.app","herokuapp.com","github.io","hf.space","sslip.io","nip.io","run.app","appspot.com","amazonaws.com",
+  "cloudfront.net","azurewebsites.net","duckdns.org","ngrok.app","ngrok-free.app","replit.app","repl.co","deno.dev",
+  "supabase.co","firebaseapp.com","web.app","elestio.app","base44.app"];
+const today = new Date().toISOString().slice(0, 10);
+$("issued").value = today;
+
+function cleanDomain(v) {
+  return v.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0].split(":")[0].replace(/\.$/, "");
+}
+function state() {
+  return { domain: cleanDomain($("domain").value), addr: $("addr").value.trim(),
+           issued: $("issued").value, sig: $("sig").value.trim() };
+}
+function message(s) {
+  return "x402 payout verification\n\nDomain: " + s.domain + "\nPay-to: " + s.addr.toLowerCase() + "\nIssued: " + s.issued;
+}
+function validAddr(a) { return /^0x[0-9a-fA-F]{40}$/.test(a); }
+function validDomain(d) { return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d); }
+
+function render() {
+  const s = state();
+  const ready = validDomain(s.domain) && validAddr(s.addr) && s.issued;
+  $("message").textContent = ready ? message(s)
+    : (!validDomain(s.domain) ? "Enter the domain your endpoints run on." : "Enter a 0x… payout address.");
+  $("sign").disabled = !ready; $("copyMsg").disabled = !ready;
+  const sigOk = /^0x[0-9a-fA-F]{130,}$/.test(s.sig);
+  $("out").classList.toggle("show", ready && sigOk);
+  $("outWaiting").style.display = ready && sigOk ? "none" : "block";
+  if (!(ready && sigOk)) return;
+  const file = { version: 1, domain: s.domain, payTo: [{ address: s.addr, issued: s.issued, signature: s.sig }] };
+  $("fileUrl").textContent = "https://" + s.domain + "/.well-known/x402-payto.json";
+  $("fileOut").textContent = JSON.stringify(file, null, 2);
+  const shared = SHARED.some(x => s.domain === x || s.domain.endsWith("." + x));
+  $("dnsBlock").style.display = shared ? "none" : "block";
+  $("dnsShared").style.display = shared ? "block" : "none";
+  $("txtName").textContent = "_x402-payto." + s.domain;
+  $("txtShort").textContent = "_x402-payto" + (s.domain.split(".").length > 2 ? "." + s.domain.split(".").slice(0, -2).join(".") : "");
+  $("txtValue").textContent = "v=x402payto1; a=" + s.addr + "; d=" + s.issued + "; s=" + s.sig;
+}
+["domain", "addr", "issued", "sig"].forEach(id => $(id).addEventListener("input", render));
+
+function status(text, cls) { $("signStatus").textContent = text; $("signStatus").className = "msg " + (cls || ""); }
+function copy(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const t = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = t, 1200);
+  }).catch(() => status("Couldn't copy; select the text and copy it by hand.", "err"));
+}
+$("copyMsg").onclick = () => copy(message(state()), $("copyMsg"));
+$("copyFile").onclick = () => copy($("fileOut").textContent, $("copyFile"));
+$("copyTxt").onclick = () => copy($("txtValue").textContent, $("copyTxt"));
+$("dlFile").onclick = () => {
+  const blob = new Blob([$("fileOut").textContent + "\n"], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "x402-payto.json"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+$("sign").onclick = async () => {
+  const s = state();
+  if (!window.ethereum) {
+    status("No browser wallet found. Copy the message and sign it with your wallet's \"sign message\" feature, then paste the signature below.", "err");
+    return;
+  }
+  try {
+    status("Waiting for your wallet…");
+    const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+    const me = (accounts || []).map(a => a.toLowerCase());
+    if (!me.includes(s.addr.toLowerCase())) {
+      status("Your wallet is connected as " + (accounts[0] || "nothing") + ". Switch to " + s.addr + " and try again.", "err");
+      return;
+    }
+    const hex = "0x" + Array.from(new TextEncoder().encode(message(s))).map(b => b.toString(16).padStart(2, "0")).join("");
+    const sig = await window.ethereum.request({ method: "personal_sign", params: [hex, s.addr] });
+    $("sig").value = sig;
+    status("Signed. Now publish one of the options below.", "ok");
+    render();
+  } catch (e) {
+    status("Signing didn't finish: " + (e && e.message ? e.message : e), "err");
+  }
+};
+render();
+</script>
+</body></html>

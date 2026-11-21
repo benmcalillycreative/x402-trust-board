@@ -1,0 +1,68 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Listing check: Settle Watch</title><meta name="description" content="Why isn&#x27;t my x402 endpoint in Coinbase&#x27;s Bazaar? A free check with a fix for each problem."><style>
+:root{--bg:#f7f6f2;--panel:#fff;--ink:#1b1b18;--muted:#6b6a63;--line:#e4e2da;--accent:#1f5f4a;
+--red:#b3261e;--redbg:#fbe9e7;--warn:#8a5a00;--warnbg:#fbf0d9;--good:#1f6b45;--goodbg:#e3f3ea;--chip:#efede6}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141412;--panel:#1c1c19;--ink:#ecebe5;
+--muted:#9d9b92;--line:#2e2d29;--accent:#6cc2a1;--red:#ff8a80;--redbg:#3a1c1a;--warn:#f0c46a;--warnbg:#3a2f17;
+--good:#7fd6a6;--goodbg:#16301f;--chip:#262622}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:960px;margin:0 auto;padding:24px 16px 60px}a{color:var(--accent)}
+h1{font-size:24px;margin:6px 0 2px;word-break:break-all}.sub{color:var(--muted);margin:0 0 18px}
+.top{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.grade{font-size:40px;font-weight:700;width:72px;height:72px;border-radius:14px;display:flex;align-items:center;
+justify-content:center;color:#fff}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:0 0 14px}
+.card h2{font-size:15px;margin:0 0 8px}.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:600px}th,td{padding:8px 10px;border-bottom:1px solid var(--line);
+text-align:left;vertical-align:top;font-size:14px}th{font-size:12px;text-transform:uppercase;color:var(--muted)}
+.chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;margin:2px 4px 2px 0;background:var(--chip)}
+.chip.red{background:var(--redbg);color:var(--red)}.chip.warn{background:var(--warnbg);color:var(--warn)}
+.chip.good{background:var(--goodbg);color:var(--good)}code{font-size:12px;word-break:break-all}
+.g{font-weight:700}.muted{color:var(--muted)}textarea{width:100%;font:12px ui-monospace,monospace;padding:8px;
+border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+form.alert{display:flex;gap:8px;flex-wrap:wrap}form.alert input[type=email],form.alert input[type=text],form.alert textarea,form.alert select{flex:1 1 220px;padding:8px 10px;
+border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+form.alert button{padding:8px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
+form.alert.stack{flex-direction:column;align-items:stretch}form.alert.stack input,form.alert.stack textarea,form.alert.stack select,form.alert.stack button{flex:0 0 auto}
+details{margin-top:12px}details summary{cursor:pointer}details form.alert{margin-top:8px}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+</style></head><body><main><p class="muted"><a href="index.html">Settle Watch</a> / Listing check</p><h1>Why isn't my endpoint in the Bazaar?</h1><p class="sub">Paste your paid endpoint. This runs Coinbase's own validator (the checks the Bazaar indexer runs), looks your payout address up in Coinbase's merchant list, and adds the board's 30-day availability against Coinbase's 99% bar for featured listings. Every problem comes with a fix. Free, nothing is paid.</p><div class="card"><form class="alert" id="lc" data-api="https://api.settlewatch.com"><input type="text" name="url" required placeholder="https://api.example.com/v1/your-route" aria-label="Endpoint URL" inputmode="url" style="flex:3 1 320px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit"><select name="method" aria-label="HTTP method" style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit"><option>GET</option><option>POST</option></select><button type="submit">Check listing</button></form><p class="muted">Same check from an agent: the <code>check_listing</code> tool on the MCP server <code>https://api.settlewatch.com/mcp</code>, or <code>GET https://api.settlewatch.com/v1/listing?url=…</code>. 30 checks a day per address.</p></div><div id="out" aria-live="polite"></div><div class="card"><h2>How a route gets into the Bazaar</h2><ol><li>It answers an unpaid request with <b>402</b>, with the terms in the <code>PAYMENT-REQUIRED</code> header (x402 v2). Input validation that returns 400 before the payment middleware stops the indexer.</li><li>It advertises an <code>extensions.bazaar</code> block: an example input that still gets a 402, and the schema that example validates against.</li><li>A paid call settles through the CDP facilitator with <code>paymentPayload.resource</code> and <code>paymentPayload.extensions.bazaar</code> set. Indexing can take up to 15 minutes; <code>processing</code> isn't an error, and a resource with no settled payment for 30 days drops out.</li><li>The Agentic.Market card (name, category, description) is curated by Coinbase: ask for it with an issue on <a href="https://github.com/coinbase/cdp-sdk/issues" rel="noopener">coinbase/cdp-sdk</a>.</li><li>Featured placement needs 99% availability over 30 days on Coinbase's probe, complete metadata and live mainnet payments.</li></ol><p class="muted">Source: Coinbase's <a href="https://docs.cdp.coinbase.com/x402/seller/get-discovered" rel="noopener">Get discovered</a> docs. Want this watched for you? <a href="pro.html">See the seller plan</a>.</p></div><script>
+(function(){
+var API=document.getElementById('lc').dataset.api;
+var f=document.getElementById('lc'),out=document.getElementById('out'),btn=f.querySelector('button');
+function el(t,c,txt){var e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e;}
+var LABEL={pass:'OK',fail:'Fix',warn:'Check',info:'Note'};
+var CLS={pass:'good',fail:'red',warn:'warn',info:''};
+function show(d){
+  out.textContent='';
+  var card=el('div','card');
+  card.appendChild(el('h2',null,d.listed?'Listed in the Bazaar':'Not listed in the Bazaar'));
+  card.appendChild(el('p',null,d.summary));
+  var meta=el('p','muted','Checked '+d.checked_at+(d.cached?' (cached for 10 minutes)':'')+'. '+(d.note||''));
+  card.appendChild(meta);out.appendChild(card);
+  var order={fail:0,warn:1,info:2,pass:3};
+  (d.findings||[]).slice().sort(function(a,b){return order[a.status]-order[b.status];}).forEach(function(x){
+    var c=el('div','card');var h=el('h2');
+    h.appendChild(el('span','chip '+CLS[x.status],LABEL[x.status]));h.appendChild(document.createTextNode(' '+x.title));
+    c.appendChild(h);if(x.detail)c.appendChild(el('p',null,x.detail));
+    if(x.fix){var p=el('p');p.appendChild(el('b',null,'How to fix: '));p.appendChild(document.createTextNode(x.fix));c.appendChild(p);}
+    out.appendChild(c);
+  });
+  if(d.board&&d.board.page){var p=el('p','muted');p.appendChild(document.createTextNode('Full history on your '));
+    var a=el('a',null,'seller page');a.href=d.board.page;p.appendChild(a);p.appendChild(document.createTextNode('.'));out.appendChild(p);}
+}
+function run(url,method){
+  out.textContent='';out.appendChild(el('p','muted','Checking with Coinbase\u2019s validator\u2026 this takes a few seconds.'));
+  btn.disabled=true;
+  fetch(API+'/v1/listing?url='+encodeURIComponent(url)+'&method='+method)
+   .then(function(r){return r.json().then(function(j){return [r.status,j];});})
+   .then(function(rj){btn.disabled=false;if(rj[0]!==200){out.textContent='';out.appendChild(el('p',null,rj[1].error||('Error '+rj[0])));return;}show(rj[1]);})
+   .catch(function(){btn.disabled=false;out.textContent='';out.appendChild(el('p',null,'Couldn\u2019t reach the check service. Try again in a minute.'));});
+}
+f.addEventListener('submit',function(e){e.preventDefault();var u=f.url.value.trim();var m=f.method.value;
+  try{history.replaceState(null,'','?url='+encodeURIComponent(u)+(m==='POST'?'&method=POST':''));}catch(_){}
+  run(u,m);});
+var q=new URLSearchParams(location.search);
+if(q.get('url')){f.url.value=q.get('url');if(q.get('method')==='POST')f.method.value='POST';run(f.url.value,f.method.value);}
+})();
+</script></main></body></html>

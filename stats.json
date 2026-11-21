@@ -1,0 +1,36 @@
+{
+ "generated_at": "2026-11-21T10:54:39Z",
+ "api": {
+  "generated_at": "2026-11-21T10:54:39.645Z",
+  "last_7_days": {
+   "checks": 1,
+   "plans": 0,
+   "usd": 0.01,
+   "payers": 1
+  },
+  "last_30_days": {
+   "checks": 1,
+   "plans": 0,
+   "usd": 0.01,
+   "payers": 1
+  },
+  "days": [
+   {
+    "day": "2026-11-19",
+    "checks": 1,
+    "checks_usd": 0.01,
+    "plans": 0,
+    "plans_usd": 0,
+    "payers": {
+     "0xa1d1\u20261978": 1
+    }
+   }
+  ],
+  "note": "Settled payments only (paid checks at /v1/check and seller-plan payments). Payers are shortened wallet addresses."
+ },
+ "guard_downloads": {
+  "last-week": 1127,
+  "last-month": 1127
+ },
+ "seller_plans_active": 0
+}

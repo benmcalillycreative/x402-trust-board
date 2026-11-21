@@ -1,0 +1,69 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Method and limits: Settle Watch</title><meta name="description" content="How Settle Watch checks agent-payable APIs, what its verdicts mean, and what they can&#x27;t promise."><style>
+:root{--bg:#f7f6f2;--panel:#fff;--ink:#1b1b18;--muted:#6b6a63;--line:#e4e2da;--accent:#1f5f4a;
+--red:#b3261e;--redbg:#fbe9e7;--warn:#8a5a00;--warnbg:#fbf0d9;--good:#1f6b45;--goodbg:#e3f3ea;--chip:#efede6}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141412;--panel:#1c1c19;--ink:#ecebe5;
+--muted:#9d9b92;--line:#2e2d29;--accent:#6cc2a1;--red:#ff8a80;--redbg:#3a1c1a;--warn:#f0c46a;--warnbg:#3a2f17;
+--good:#7fd6a6;--goodbg:#16301f;--chip:#262622}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:960px;margin:0 auto;padding:24px 16px 60px}a{color:var(--accent)}
+h1{font-size:24px;margin:6px 0 2px;word-break:break-all}.sub{color:var(--muted);margin:0 0 18px}
+.top{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.grade{font-size:40px;font-weight:700;width:72px;height:72px;border-radius:14px;display:flex;align-items:center;
+justify-content:center;color:#fff}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:0 0 14px}
+.card h2{font-size:15px;margin:0 0 8px}.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:600px}th,td{padding:8px 10px;border-bottom:1px solid var(--line);
+text-align:left;vertical-align:top;font-size:14px}th{font-size:12px;text-transform:uppercase;color:var(--muted)}
+.chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;margin:2px 4px 2px 0;background:var(--chip)}
+.chip.red{background:var(--redbg);color:var(--red)}.chip.warn{background:var(--warnbg);color:var(--warn)}
+.chip.good{background:var(--goodbg);color:var(--good)}code{font-size:12px;word-break:break-all}
+.g{font-weight:700}.muted{color:var(--muted)}textarea{width:100%;font:12px ui-monospace,monospace;padding:8px;
+border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+form.alert{display:flex;gap:8px;flex-wrap:wrap}form.alert input[type=email],form.alert input[type=text],form.alert textarea,form.alert select{flex:1 1 220px;padding:8px 10px;
+border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+form.alert button{padding:8px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
+form.alert.stack{flex-direction:column;align-items:stretch}form.alert.stack input,form.alert.stack textarea,form.alert.stack select,form.alert.stack button{flex:0 0 auto}
+details{margin-top:12px}details summary{cursor:pointer}details form.alert{margin-top:8px}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+</style></head><body><main><p class="muted"><a href="index.html">Settle Watch</a> / Method and limits</p>
+<h1>Method and limits</h1>
+<p class="sub">What the board checks, what its answers mean, and what they can't promise.</p>
+<div class="card"><h2>What is checked</h2>
+<p>Every endpoint listed in Coinbase's x402 Bazaar, Circle's Agent Marketplace and the MPP directory is asked for its
+price several times a day <b>without paying</b>. The answer (network, amount, the address to pay) is compared with the
+listing and with earlier answers. USDC payments to each service's payout addresses are counted on Base and Solana.
+Sellers can publish a signed <a href="verify.html">payout proof</a>.</p></div>
+<div class="card"><h2>Verdicts (check API, MCP tool and x402-trust-guard)</h2><ul>
+<li><b>avoid</b>: money would go somewhere it shouldn't. The endpoint switched to a wallet nothing it listed names, asks
+to be paid at a burn address or a non-public address, or asks for an address that contradicts the payout proof the
+seller published. Each is a direct observation of the endpoint's own 402 answer.</li>
+<li><b>caution</b>: it works, but something needs a look: a price well above its listing (often a stale listing), a
+wallet its listing doesn't name, flaky or slow answers, a C/D/F grade, too few checks to grade, or data more than a day old.</li>
+<li><b>ok</b>: graded A or B on recent data, with payment terms that match its listing and nothing contradicting its
+payout address.</li>
+<li><b>unknown</b>: the seller isn't in any catalog the board reads.</li></ul>
+<p>Grades (A–F) rank reliability and listing accuracy; they are not a safety verdict on their own.</p></div>
+<div class="card"><h2>What it can't tell you</h2><ul>
+<li><b>Whether you'll get what you pay for.</b> Checks never pay, so delivery after payment isn't tested.</li>
+<li><b>Whether a seller is honest or solvent.</b> A payout proof shows that whoever controls the domain also controls the
+wallet. Nothing more.</li>
+<li><b>What happened since the last check.</b> Data refreshes about every six hours; answers say how old they are, and
+anything over a day old is never "ok".</li>
+<li><b>Payments elsewhere.</b> Only USDC on Base and Solana is counted. Services that hand out a new address for every
+payment, or whose addresses aren't all counted yet, show no payment numbers rather than partial ones.</li></ul></div>
+<div class="card"><h2>If the check can't be reached</h2>
+<p>x402-trust-guard lets the payer choose: <code>onError: "allow"</code> (default, the payment goes ahead) or
+<code>"block"</code>. Unknown sellers and caution verdicts are allowed by default and can be blocked the same way.</p></div>
+<div class="card"><h2>How the numbers are counted</h2><ul>
+<li>Headline counts cover endpoints listed now. Delisted ones stay in <a href="scores.json">scores.json</a>.</li>
+<li>A service is a distinct host. Hosts paid at exactly the same addresses are shown as one service in payment tables,
+and every payment total counts each address once.</li>
+<li>Paid-call counts come from Coinbase's catalog; payment counts come from the chain. They differ, and both are shown.</li></ul></div>
+<div class="card"><h2>Independence and corrections</h2>
+<p>Grades and findings are never for sale: the seller plan changes how often and how closely a service is watched,
+never how it is graded. A seller who thinks a finding is wrong can reply to any board email; confirmed intended terms
+(an example offer, a price that depends on the request) are recorded as owner notes and shown as such. The code is
+<a href="https://github.com/benmcalillycreative/x402-trust-board">public</a>.</p></div>
+<div class="card wrap"><h2>Every flag</h2><table><thead><tr><th>Code</th><th>Meaning</th><th>Level</th></tr></thead>
+<tbody><tr><td><code>burn_address</code></td><td>Asks to be paid to the zero address (funds would be lost)</td><td>Red flag</td></tr><tr><td><code>payout_mismatch</code></td><td>Asks for payment to an address its own site doesn&#x27;t list</td><td>Red flag</td></tr><tr><td><code>private_address</code></td><td>Points at a private network address</td><td>Red flag</td></tr><tr><td><code>wallet_switched</code></td><td>Payment wallet switched to an address no listing mentions</td><td>Red flag</td></tr><tr><td><code>broken_terms</code></td><td>Returns 402 without readable payment terms</td><td>Warning</td></tr><tr><td><code>dead</code></td><td>Never answered in this window</td><td>Warning</td></tr><tr><td><code>flaky</code></td><td>Unreliable (under 90% uptime)</td><td>Warning</td></tr><tr><td><code>free_but_listed</code></td><td>Listed as paid but answered for free</td><td>Warning</td></tr><tr><td><code>gone</code></td><td>Listed URL returns 404</td><td>Warning</td></tr><tr><td><code>overcharge_10x</code></td><td>Asks over 10× its listed price</td><td>Warning</td></tr><tr><td><code>overcharge_2x</code></td><td>Asks 2–10× its listed price</td><td>Warning</td></tr><tr><td><code>payout_changed</code></td><td>Started asking for payment to a new address</td><td>Warning</td></tr><tr><td><code>self_paid</code></td><td>Most payments to its wallet came from the seller&#x27;s own wallets</td><td>Warning</td></tr><tr><td><code>shared_wallet</code></td><td>Pays to a wallet a different service lists</td><td>Warning</td></tr><tr><td><code>slow</code></td><td>Slow (median over 3 seconds)</td><td>Warning</td></tr><tr><td><code>test_network_only</code></td><td>Listed on a live network but asks for test-network payment</td><td>Warning</td></tr><tr><td><code>unlisted_wallet</code></td><td>Pays to a wallet not in its listing</td><td>Warning</td></tr><tr><td><code>delisted</code></td><td>No longer in the catalog</td><td>Information</td></tr><tr><td><code>example_offer</code></td><td>Bare URL returns an example offer (zero address) that can&#x27;t be paid; real offers need order details</td><td>Information</td></tr><tr><td><code>listing_farm</code></td><td>One of thousands of near-identical listings from this host</td><td>Information</td></tr><tr><td><code>needs_input</code></td><td>Wants input before quoting a price</td><td>Information</td></tr><tr><td><code>network_changed</code></td><td>Now asks for payment on a different network than its listing</td><td>Information</td></tr><tr><td><code>no_payers</code></td><td>No paying customers in 30 days</td><td>Information</td></tr><tr><td><code>one_main_payer</code></td><td>Nearly all payments to its wallet come from one other wallet</td><td>Information</td></tr><tr><td><code>owner_confirmed</code></td><td>Owner confirmed these terms are intended</td><td>Information</td></tr><tr><td><code>payout_declared</code></td><td>Payout address listed by its own site (not signed)</td><td>Information</td></tr><tr><td><code>price_varies</code></td><td>Price varies by request (within 2×)</td><td>Information</td></tr><tr><td><code>redirects</code></td><td>Listed URL redirects elsewhere</td><td>Information</td></tr><tr><td><code>retired_by_owner</code></td><td>Retired by owner</td><td>Information</td></tr><tr><td><code>rotating_wallet</code></td><td>Fresh payment address each request</td><td>Information</td></tr><tr><td><code>route_pattern</code></td><td>Listed as a route pattern (e.g. /:id), partly checkable</td><td>Information</td></tr><tr><td><code>sibling_wallet</code></td><td>Pays into another wallet this service lists</td><td>Information</td></tr><tr><td><code>testnet</code></td><td>Test network only (not real money)</td><td>Information</td></tr><tr><td><code>variable_price</code></td><td>Variable pricing (up-to scheme)</td><td>Information</td></tr><tr><td><code>payout_verified</code></td><td>Payout address verified (its site + wallet signature)</td><td>Good</td></tr><tr><td><code>payout_verified_dns</code></td><td>Payout address verified (domain DNS + wallet signature)</td><td>Good</td></tr></tbody></table></div></main></body></html>
