@@ -271,6 +271,19 @@ Exceptions verifiers should handle:
 3. Check it with a verifier, for example Settle Watch's
    [verify page](https://settlewatch.com/verify.html).
 
+### 9.1 Implementations
+
+Verifiers:
+
+- [x402-trust-guard](https://www.npmjs.com/package/x402-trust-guard) and the Settle Watch check API
+  (reference implementation; sections 6, 6.1 and 6.2).
+- [teppi-check](https://www.npmjs.com/package/teppi-check) 0.6.0 and later (`--payout-proof`): reports the
+  section 6.2 outcome per payTo, beside its own checks. Contract-wallet signatures read as `unverifiable`
+  for now.
+- The Settle Watch board, which also keeps the history behind section 7's hold.
+
+Sellers publishing a DNS proof: `api.settlewatch.com` (signed), `api.teppi.xyz`.
+
 ## 10. Relation to the Offer and Receipt extension
 
 The [Offer and Receipt extension](https://github.com/x402-foundation/x402/blob/main/specs/extensions/extension-offer-and-receipt.md)
